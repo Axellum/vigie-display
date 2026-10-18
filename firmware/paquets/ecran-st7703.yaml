@@ -1,0 +1,17 @@
+# [AI-CONTEXT]
+# @file ecran-st7703.yaml
+# @role Variante d'écran MIPI-DSI ST7703 / ST7121 pour compatibilité multi-dalles Tab5 / P4.
+# ============================================================================
+substitutions:
+  carte_dalle_extinction: "0"
+  carte_dalle_noire_ota: "0"
+
+display:
+  - id: !extend tab5_display
+    platform: mipi_dsi
+    model: M5STACK-TAB5-ST7121
+
+touchscreen:
+  - id: !extend touch
+    platform: gt911
+    update_interval: 50ms

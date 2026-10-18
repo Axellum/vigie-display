@@ -179,3 +179,13 @@ constexpr int32_t kHorlogeDy = (kAccHorlogeH - (210 * kPolicePct + 50) / 100) / 
 // Pièces (pages du bas) et tuiles par pièce (ADR-0023) : le blueprint en envoie autant.
 constexpr int kPieces = 5;
 constexpr int kTuiles = 5;
+
+// ─── Géométrie Multi-Écrans « Vigie Mondiale » (1024×600, 1280×720, 8"/10") ───
+// Permet d'exprimer une coordonnée de référence 1024×600 (Waveshare 7B) ou 1280×720 (Tab5)
+// et de l'adapter dynamiquement à n'importe quelle dalle cible (${carte_ecran_l} × ${carte_ecran_h}).
+constexpr int32_t vigie_x_depuis_7b(int32_t x_1024) { return (x_1024 * kEcranL + 512) / 1024; }
+constexpr int32_t vigie_y_depuis_7b(int32_t y_600) { return (y_600 * kEcranH + 300) / 600; }
+constexpr int32_t vigie_BandeauHautH = vigie_y_depuis_7b(56);
+constexpr int32_t vigie_RouleauZonesH = vigie_y_depuis_7b(156);
+constexpr int32_t vigie_CarteMondeH = kEcranH - vigie_BandeauHautH - vigie_RouleauZonesH;
+

@@ -1,101 +1,57 @@
 # ============================================================================
 # [AI-CONTEXT]
 # @file carte-waveshare-7b.yaml
-# @role Carte Waveshare ESP32-P4-WIFI6-Touch-LCD-7B (ADR-0061) : 7", 1024×600 paysage
-#       natif, P4 v3 (`engineering_sample: false`), 32 Mo de flash, PSRAM hex. Choisie par
-#       `tab5_carte: waveshare-7b` (Tab5/user_entities.yaml ou `-s tab5_carte waveshare-7b`).
-#       EXPÉRIMENTALE : compilée par la CI (job build-carte-7b) ; écran, tactile et
-#       rétroéclairage essayés sur une vraie carte le 14/10/2026 (essais/waveshare-p4-7b.yaml),
-#       l'interface reste au pixel pour 1280×720 (lots suivants).
-# @architecture_constraint Remplace carte-tab5.yaml, donc tab5-hardware.yaml et
-#       ecran-<révision>.yaml, qu'elle ne charge pas. Principe : les autres packages
-#       nomment le matériel par ses id ; cette carte fournit LES MÊMES id.
-#       1. Matériel présent (écran tab5_display, tactile touch, bus bsp_bus, rétroéclairage
-#          backlight_pwm / backlight_plafonne / backlight, bus I2S mic_bus, micro
-#          tab5_microphone, haut-parleur tab5_speaker, lecteur speaker_player, bouton
-#          btn_restart) : déclaré ici avec les broches de la 7B. Ce qui ne dépend pas de la
-#          carte (logger, ota, safe_mode, psram, light, lecteur, toucher, options d'ESP-IDF,
-#          reset CORE des redémarrages logiciels…)
-#          est RECOPIÉ de tab5-hardware.yaml : tests/test_carte_7b.py exige les mêmes
-#          valeurs. Une modification là-bas se reporte ici.
-#       2. Matériel absent (expandeurs PI4IOE, INA226, RX8130, CHG_STAT ; ES8388 remplacé
-#          par l'ES8311) : les id que tab5-sensors-diagnostics.yaml et
-#          tab5-sensors-domotique.yaml déclarent sur ce matériel sont repris par `!extend`
-#          en `platform: template` sans broche (comme Tab5/rendu/bouchons.yaml) ; ces deux
-#          fichiers restent ceux du Tab5, sans une ligne changée pour la 7B, sauf l'`id` de
-#          l'interval de l'horloge RX8130 (tab5_rtc_demarrage), retiré ici par `!remove`.
-#          L'ampli (speaker_enable) devient la vraie broche GPIO53 de la 7B.
-#       3. IMU absente : tab5-ha-hmi.yaml charge tab5-imu-absente.yaml au lieu de tab5-imu.yaml.
-#       Choix le moins intrusif pour le Tab5 : sa configuration résolue ne change pas
-#       (sauf les substitutions carte_* et l'id ci-dessus), aucun package n'a de branche
-#       selon la carte. Coût : ~150 lignes recopiées, tenues égales par le test.
-# @hardware Broches lues dans le BSP Waveshare (waveshare/esp32_p4_wifi6_touch_lcd_7b) et
-#       sur le schéma (H:\AuxFilsDesIdees\contexte_ia\02_Hardware\docs_constructeurs\,
-#       hors dépôt), reprises de l'essai compilé essais/waveshare-p4-7b.yaml (branche
-#       feat/essais-ecrans-waveshare). À confirmer carte en main : le lien SDIO du C6
-#       (broches par défaut d'esp_hosted, reset GPIO54), la PSRAM à 200 MHz, le tactile.
-#       Pas d'IMU, pas de jauge de batterie, pas d'expandeur, pas de RTC (support de pile
-#       1220 sur le VBAT du P4, rechargé par la carte : ML1220 rechargeable seulement,
-#       jamais CR1220), caméra non branchée. Batterie (schéma) : connecteur J4 (MX1.25,
-#       un élément lithium), chargeur ETA6098, survolteur 5 V, interrupteur ON/OFF ;
-#       tension lisible sur GPIO20 par un pont 200k/100k (÷ 3), pas lue par ce fichier.
-# @ai_instruction Ne pas changer une broche sans la relire dans le BSP ou sur le schéma.
+# @role Socle matériel autonome de la carte Waveshare ESP32-P4-WIFI6-Touch-LCD-7B :
+#       7" IPS 1024×600 (EK79007 MIPI-DSI, reset GPIO33), P4 v3.2 @ 400 MHz
+#       (`engineering_sample: false`), 32 Mo de flash QSPI, 32 Mo PSRAM hex 200 MHz,
+#       tactile GT911 (reset GPIO23), audio ES8311 (`volume_max: 75%` = 0 dB) +
+#       ampli NS4150B (GPIO53), double micro ES7210, Wi-Fi 6 SDIO ESP32-C6 (reset
+#       CORE via `tab5_lien_c6.cpp`).
+# @architecture_constraint 100 % autonome (ZÉRO dépendance Home Assistant, ZÉRO
+#       bouchon domotique hérité du Tab5). Partage les mêmes identifiants matériels
+#       (`tab5_display`, `touch`, `bsp_bus`, `backlight`, `mic_bus`, `tab5_speaker`,
+#       `speaker_player`, `speaker_enable`) que `carte-tab5.yaml` pour l'architecture
+#       Multi-Écrans (`vigie_carte: waveshare-7b` ou `tab5`).
+# @hardware Référence complète : `docs/audits/BASE_CONNAISSANCE_WAVESHARE_7B.md`.
+#       Batterie Li-ion 1S sur connecteur J4 (MX1.25, chargeur ETA6098, boost 5 V
+#       SCT12A0) : tension mesurable sur `GPIO20` (pont 200 kΩ / 100 kΩ → VBAT / 3,
+#       `multiply: 3.0`). Support pile RTC BAT1 : ML1220 rechargeable uniquement
+#       (jamais CR1220).
 # ============================================================================
 packages:
   geometrie: !include geometrie-waveshare-7b.yaml
+  imu: !include tab5-imu-absente.yaml
 
-# Extinction de la dalle (Tab5/ecran/tab5_dalle.cpp, audit anti-casse du 16/10/2026) : voile
-# noir, « display off » (0x28) et « sleep in » (0x10) à l'EK79007, tactile GT911 à part ; le
-# rétroéclairage analogique ne s'éteint pas tout à fait (l'image restait visible à 0 %). Et
-# dalle éteinte pendant une mise à jour du firmware, qui la faisait scintiller (forum HA,
-# fil « 7B working config »). 0x28 seul : essayé le 16/10/2026, sans effet visible (PR #487).
 substitutions:
+  # Extinction complète de la dalle EK79007 (voile noir + DCS 0x28 Display Off + 0x10 Sleep In)
+  # et extinction pendant les mises à jour OTA (évite le scintillement HSYNC/VSYNC).
   carte_dalle_extinction: "2"
   carte_dalle_noire_ota: "1"
-  # Le C6 d'usine de la 7B ne répond pas à la demande de version d'ESP-Hosted (rien depuis
-  # le 14/10/2026) et chaque demande figeait la boucle 1 s (capteur « Tab5 C6 Version »,
-  # tab5-sensors-diagnostics.yaml) : plus de demande. À remettre à true après une mise à
-  # jour du C6 (docs/waveshare-7b.md).
+  # Le firmware d'usine de l'ESP32-C6 de la 7B ne répond pas à la requête de version ESP-Hosted
+  # (bloquerait la boucle 1 s par essai) : désactivé tant que le C6 n'est pas reflashé en 2.12.12.
   carte_c6_version: "false"
-  # Pas d'attente avant l'écran (ADR-0005) : celle du Tab5 (1 s) laisse son expandeur
-  # PI4IOE5V6408 se stabiliser avant le reset de la dalle ; la 7B n'a pas d'expandeur, le
-  # reset de l'EK79007 est GPIO33, une broche du P4, que le pilote mipi_dsi d'ESPHome tient
-  # lui-même (5 ms haut, 5 ms bas, puis 120 ms avant « sleep out »). La 7B la payait à
-  # chaque démarrage (chronologie : avant1s → apres1s = 1 000 ms).
+  # Reset de l'EK79007 câblé en direct sur GPIO33 du P4 (pas d'expandeur I2C à attendre) : 0 ms.
   carte_attente_ecran_ms: "0"
+  # Broches GPS UART par défaut sur le connecteur P3 de la Waveshare 7B (Option A)
+  vigie_gps_rx_pin: "GPIO4"
+  vigie_gps_tx_pin: "GPIO5"
+  vigie_gps_baud_rate: "9600"
 
-# Plancher d'ESPHome de la 7B : 2026.9.1 (voir esp32_hosted plus bas). Vérifié à la
-# compilation par un static_assert : un `min_version:` ici serait écrasé par celui de
-# tab5-ha-hmi.yaml (2026.9.0, plancher du Tab5) à la fusion des packages.
 esphome:
   includes:
-    - Tab5/ecran/carte_7b_version.h
-    # Redémarrage logiciel en reset CORE, pour le lien SDIO du C6 (esp32_hosted, plus bas) :
-    # recopié de tab5-hardware.yaml (tests/test_carte_7b.py), comme le global plus bas.
-    - Tab5/ecran/tab5_lien_c6.h
-    - Tab5/ecran/tab5_lien_c6.cpp
-    # Écran éteint = dalle éteinte (lumière et `ota:` plus bas), comme tab5-hardware.yaml.
-    - Tab5/ecran/tab5_dalle.h
-    - Tab5/ecran/tab5_dalle.cpp
+    - firmware/ecran/carte_7b_version.h
+    - firmware/ecran/tab5_lien_c6.h
+    - firmware/ecran/tab5_lien_c6.cpp
+    - firmware/ecran/tab5_dalle.h
+    - firmware/ecran/tab5_dalle.cpp
 
-# ─── 1. Matériel de la 7B ────────────────────────────────────────────────────
+# ─── 1. SoC ESP32-P4 v3.2 @ 400 MHz & PSRAM Hex 200 MHz ────────────────────
 
 esp32:
   variant: esp32p4
-  # P4 v3 (de série) : ce que visent les démos Waveshare (CONFIG_ESP32P4_REV_MIN_300).
   engineering_sample: false
-  # 400 MHz : la fréquence normale d'un P4 v3 (guide Espressif de la révision v3.x), et la
-  # seule possible. ESP-IDF 5.5 n'offre 360 MHz qu'à un P4 d'avant la v3
-  # (esp_system/port/soc/esp32p4/Kconfig.cpu : ESP_DEFAULT_CPU_FREQ_MHZ_360 dépend de
-  # ESP32P4_SELECTS_REV_LESS_V3) : les 360 MHz demandés jusqu'au 16/10/2026 étaient ignorés,
-  # la carte a toujours tourné à 400 (sdkconfig du build : CONFIG_ESP_DEFAULT_CPU_FREQ_MHZ=400).
-  # L'avertissement d'ESPHome « 400MHz on ESP32-P4 is experimental and may not boot »
-  # (esphome#13425) vise les échantillons d'avant la v3 ; le Tab5 (P4 v1.x) reste à 360.
   cpu_frequency: 400MHz
   flash_size: 32MB
-  # Recopié de tab5-hardware.yaml (tests/test_carte_7b.py) : mêmes réglages d'ESP-IDF,
-  # mêmes raisons (code en PSRAM, -O2, pile de 16 Ko, firmware signé, cache L2…), sauf la
-  # fréquence du processeur (ci-dessus) : pas d'options 360 MHz, sans effet sur un P4 v3.
   framework:
     type: esp-idf
     advanced:
@@ -103,9 +59,6 @@ esp32:
       execute_from_psram: true
       compiler_optimization: PERF
       loop_task_stack_size: 16384
-      signed_ota_verification:
-        signing_key: ${ tab5_cle_signature | default('tab5_signature.pem') }
-        signing_scheme: rsa3072
     sdkconfig_options:
       CONFIG_SPI_FLASH_YIELD_DURING_ERASE: "y"
       CONFIG_ESP_TASK_WDT_TIMEOUT_S: "15"
@@ -116,12 +69,12 @@ esp32:
       CONFIG_LWIP_DHCP_DOES_NOT_CHECK_OFFERED_IP: "y"
       CONFIG_FREERTOS_GENERATE_RUN_TIME_STATS: "y"
 
-# Wi-Fi par l'ESP32-C6 en SDIO. Le BSP ne le décrit pas : broches par défaut d'esp_hosted
-# pour le P4, celles de la démo Wi-Fi de Waveshare et du schéma (GPIO14-19 près du C6,
-# GPIO54 relié par 0 Ω à C6_CHIP_PU). active_high: true comme le Tab5 (même câblage) :
-# essayé sur la carte le 14/10/2026, false donne « sdmmc_card_init failed » et pas de Wi-Fi.
-# Il faut aussi ESPHome 2026.9.1 au moins : 2026.9.0 plante au démarrage de l'écran sur
-# un P4 v3 (horloge DSI « legacy », esphome#18984).
+psram:
+  mode: hex
+  speed: 200MHz
+
+# ─── 2. Coprocesseur Wi-Fi 6 ESP32-C6-MINI-1 (SDIO Slot 1) ─────────────────
+
 esp32_hosted:
   variant: esp32c6
   active_high: true
@@ -136,17 +89,11 @@ esp32_hosted:
   sdio_frequency: 20MHz
   use_psram: true
 
-# Boucle de redémarrages du 16/10/2026 (docs/troubleshooting.md) : après un redémarrage
-# logiciel, le lien SDIO du C6 peut ne plus monter, et chaque esp_restart() suivant (reset
-# des seuls CPU) échoue pareil jusqu'au mode sans échec ; un reset CORE (USB) ou une coupure
-# débloque. Tab5/ecran/tab5_lien_c6.cpp fait de tout redémarrage logiciel un reset CORE ;
-# ce global l'appelle dans setup(), avant les composants. Recopié de tab5-hardware.yaml.
 globals:
   - id: lien_c6_branche
     type: bool
     initial_value: 'lien_c6_demarrage()'
 
-# Recopié de tab5-hardware.yaml (journal des démarrages, voir là-bas).
 logger:
   level: INFO
   baud_rate: 115200
@@ -157,13 +104,6 @@ logger:
     then:
       - lambda: 'journal_log_message(level, tag, message);'
 
-psram:
-  mode: hex
-  speed: 200MHz
-
-# Recopié de tab5-hardware.yaml : en LISTE (publication-commune.yaml y ajoute
-# http_request), sans `encryption:` ni `password:`, ota_en_cours pour l'extinction auto,
-# dalle éteinte pendant la mise à jour (script tab5_dalle_ota : ici, carte_dalle_noire_ota).
 ota:
   - platform: esphome
     on_begin:
@@ -180,21 +120,18 @@ safe_mode:
   num_attempts: 10
   boot_is_good_after: 30s
 
-# Bus du tactile (GT911 en 0x5D / 0x14) et des codecs (ES8311 en 0x18, ES7210 en 0x40).
-# Même id que celui du Tab5.
+# ─── 3. Bus I2C, Écran MIPI-DSI EK79007, Tactile GT911 & Rétroéclairage ────
+
 i2c:
   - id: bsp_bus
     sda: GPIO7
     scl: GPIO8
     frequency: 400kHz
 
-# Alimentation du PHY MIPI-DSI : LDO_VO3 à 2,5 V (BSP, display.h), comme sur le Tab5.
 esp_ldo:
   - voltage: 2.5V
     channel: 3
 
-# Écran EK79007, modèle officiel d'ESPHome (reset GPIO33 dans le modèle). Dimensions de la
-# dalle : geometrie-waveshare-7b.yaml.
 display:
   - id: tab5_display
     platform: mipi_dsi
@@ -207,14 +144,6 @@ display:
     update_interval: never
     auto_clear_enabled: false
 
-# GT911 : le BSP déclare RST et INT non reliés (GPIO_NUM_NC), mais le schéma relie GPIO23
-# au connecteur du tactile et les configs publiques qui marchent sur la carte
-# (agillis/esphome-modular-lvgl-buttons, Jordi1990/openamber, fil HA t/945864) le donnent
-# en reset_pin. Inversé en X et en Y pour suivre la rotation de 180° de LVGL
-# (geometrie-waveshare-7b.yaml). Essai du 14/10/2026 sur la carte : sans ces réglages,
-# 1 appui reconnu en 5 min ; avec, chaque appui arrive au bon endroit. Le composant
-# interroge (pas d'INT) ; résolution lue dans le contrôleur. on_touch / on_release
-# recopiés de tab5-hardware.yaml (mode économie, écran rallumé au toucher).
 touchscreen:
   - id: touch
     platform: gt911
@@ -235,9 +164,6 @@ touchscreen:
             then:
               - light.turn_on: backlight
 
-# Rétroéclairage : LEDC sur GPIO32, sortie inversée (BSP : output_invert = 1), 5 kHz.
-# backlight_plafonne et la lumière : recopiés de tab5-hardware.yaml (mode économie,
-# chronologie du démarrage, extinction auto).
 output:
   - platform: ledc
     id: backlight_pwm
@@ -268,12 +194,9 @@ light:
       - lambda: 'id(ecran_allume_ms) = millis();'
       - script.execute: tab5_economie_appliquer
     on_turn_off:
-      - lambda: 'roue_actions_fermer();'
       - lambda: 'dalle_eteindre(id(tab5_display));'
       - lvgl.pause:
 
-# Recopiés de tab5-hardware.yaml : rallumage de la dalle et dalle éteinte pendant une OTA
-# (Tab5/ecran/tab5_dalle.cpp ; ici « sleep in » et OTA, carte_dalle_* en haut du fichier).
 script:
   - id: tab5_dalle_rallumer
     mode: restart
@@ -305,15 +228,14 @@ script:
                 else:
                   - script.execute: tab5_dalle_rallumer
 
-# Audio : un seul bus I2S pour le micro et le haut-parleur, comme le Tab5 (ADR-0010).
-# Broches du BSP : MCLK 13, SCLK 12, LRCK 10, DOUT 9, DIN 11.
+# ─── 4. Audio : Alertes Sonores ES8311 + NS4150B (GPIO53) & Micros ES7210 ──
+
 i2s_audio:
   - id: mic_bus
     i2s_lrclk_pin: GPIO10
     i2s_bclk_pin: GPIO12
     i2s_mclk_pin: GPIO13
 
-# ES7210 (deux micros sur la 7B), mêmes réglages que le Tab5 (tab5-hardware.yaml).
 audio_adc:
   - platform: es7210
     id: es7210_adc
@@ -330,8 +252,6 @@ microphone:
     adc_type: external
     correct_dc_offset: true
 
-# ES8311 (sortie mono, ampli NS4150B) à la place de l'ES8388 du Tab5 : pas de select
-# « Tab5 DAC Output » (LINE1 / LINE2, propre à l'ES8388).
 audio_dac:
   - platform: es8311
     id: es8311_dac
@@ -348,40 +268,42 @@ speaker:
     bits_per_sample: 16bit
     sample_rate: 48000
 
-# Recopié de tab5-hardware.yaml (format annoncé à HA, micro et mot d'activation pendant
-# une annonce ou une sonnerie : voir là-bas).
 media_player:
   - platform: speaker
-    name: tab5_media_player
+    name: "Vigie Alerte Audio"
     id: speaker_player
-    # Seule différence avec le Tab5 : l'ES8311 de la 7B reçoit le volume tel quel en REG32
-    # (es8311.cpp d'ESPHome : 0,75 = 0xBF = 0 dB, 1,0 = 0xFF = +32 dB de gain numérique),
-    # alors que l'ES8388 du Tab5 plafonne à 0 dB. Au volume 100 % de l'écran ou de HA, le
-    # haut-parleur saturait complètement (essai d'Axel à l'oreille le 17/10/2026 : 100 %
-    # sature, 80 % encore un peu, 75 % propre). ESPHome ramène chaque volume dans
-    # [volume_min, volume_max] avant le codec (speaker_media_player.cpp) : 100 % = 0 dB.
+    # Plafonnement impératif à 75 % (0xBF = 0 dB dans REG32 de l'ES8311) pour éviter
+    # la saturation numérique (+32 dB à 100 %).
     volume_max: 75%
     announcement_pipeline:
       speaker: tab5_speaker
       format: FLAC
       sample_rate: 24000
       num_channels: 1
-    on_announcement:
-      - if:
-          condition:
-            - microphone.is_capturing: tab5_microphone
-          then:
-            - micro_wake_word.stop:
-    on_idle:
-      - if:
-          condition:
-            - and:
-                - not:
-                    voice_assistant.is_running:
-                - switch.is_on: tab5_wake_word_active
-                - lambda: 'return !id(alarm_ringing);'
-          then:
-            - micro_wake_word.start:
+
+switch:
+  # Amplificateur Classe D NS4150B (H7) commandé par GPIO53 (actif haut)
+  - platform: gpio
+    id: speaker_enable
+    name: "Amplificateur Audio"
+    pin: GPIO53
+    restore_mode: ALWAYS_ON
+    internal: true
+
+# ─── 5. Alimentation Batterie 1S (J4 MX1.25 / ETA6098) sur GPIO20 ──────────
+# Lecture de la tension batterie via le pont diviseur matériel 200 kΩ / 100 kΩ (VBAT / 3).
+# Décommenter ou utiliser directement `batterie_tension_7b` lorsqu'un accumulateur Li-ion 1S
+# est raccordé sur le connecteur J4.
+sensor:
+  - platform: adc
+    pin: GPIO20
+    id: batterie_tension
+    name: "Tension Batterie 7B"
+    update_interval: 60s
+    attenuation: 12db
+    internal: true
+    filters:
+      - multiply: 3.0
 
 button:
   - platform: restart
@@ -389,87 +311,3 @@ button:
     name: "Redémarrage Système"
 
 debug:
-
-# ─── 2. Matériel du Tab5 absent de la 7B : mêmes id, sans matériel ────────────
-
-switch:
-  # Alimentations et antenne du Tab5 (expandeurs PI4IOE, tab5-sensors-diagnostics.yaml) :
-  # internes, jamais lues ; ici sans broche.
-  - id: !extend wifi_power
-    platform: template
-    pin: !remove
-    optimistic: true
-  - id: !extend usb_5v_power
-    platform: template
-    pin: !remove
-    optimistic: true
-  - id: !extend external_5v_power
-    platform: template
-    pin: !remove
-    optimistic: true
-  - id: !extend wifi_antenna_int_ext
-    platform: template
-    pin: !remove
-    optimistic: true
-  # Chargeur de la batterie du Tab5 (CHG_EN, nCHG_QC_EN, sur son expandeur) : absents de
-  # la 7B, dont le chargeur (ETA6098, connecteur J4) n'est pas commandé par ce firmware.
-  # L'interval du chargeur continue de les commander, sans effet.
-  - id: !extend charge_enable
-    platform: template
-    pin: !remove
-    optimistic: true
-  - id: !extend quick_charge
-    platform: template
-    pin: !remove
-    optimistic: true
-  # Ampli NS4150B : activé par GPIO53 (BSP : pa_pin, non inversé), au lieu de la broche 1
-  # de l'expandeur du Tab5 (tab5-sensors-domotique.yaml).
-  - id: !extend speaker_enable
-    pin: GPIO53
-
-binary_sensor:
-  # Prise casque (expandeur du Tab5) : absente.
-  - id: !extend headphone_detect
-    platform: template
-    pin: !remove
-  # CHG_STAT (expandeur du Tab5) : jamais en charge.
-  - id: !extend batterie_en_charge
-    platform: template
-    pin: !remove
-
-sensor:
-  # INA226 de la batterie : absent. Le composant devient un capteur interne sans valeur
-  # (l'interval du chargeur et la mesure de consommation l'appellent encore), sa tension et
-  # son courant deux capteurs sans valeur : « Tab5 Batterie » reste inconnue.
-  - id: !extend ina226_batterie
-    platform: template
-    i2c_id: !remove
-    address: !remove
-    shunt_resistance: !remove
-    max_current: !remove
-    adc_averaging: !remove
-    bus_voltage: !remove
-    current: !remove
-  - platform: template
-    id: batterie_tension
-    update_interval: never
-  - platform: template
-    id: batterie_courant
-    update_interval: never
-
-time:
-  # Horloge matérielle RX8130 : absente. Ni elle, ni son écriture à chaque synchro NTP.
-  - id: !remove rtc_time
-  - id: !extend sntp_time
-    on_time_sync:
-      then:
-        - rx8130.write_time:
-            id: !remove rtc_time
-
-interval:
-  # Lecture de la RX8130 au démarrage : retirée ; le fuseau gardé en NVS est remis comme
-  # sur le Tab5 (premier passage dans les 5 s qui suivent le setup).
-  - id: !remove tab5_rtc_demarrage
-  - interval: 24h
-    then:
-      - lambda: 'fuseau_restaurer();'

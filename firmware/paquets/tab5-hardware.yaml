@@ -1,0 +1,301 @@
+# ============================================================================
+# [AI-CONTEXT]
+# @file tab5-hardware.yaml
+# @role Configuration matérielle autonome du M5Stack Tab5 V2 (I2C GPIO31/32,
+#       expandeurs PI4IOE5V6408 0x43/0x44, MIPI-DSI 720×1280, Audio ES8388 +
+#       ES7210, Batterie 2S INA226 0x41, RTC RX8130CE 0x32, Wi-Fi C6 SDIO).
+# @architecture_constraint 100 % autonome (Zéro Home Assistant). Fournit exactement
+#       les mêmes identifiants matériels que `carte-waveshare-7b.yaml`.
+# ============================================================================
+
+esp32:
+  board: esp32-p4-evboard
+  flash_size: 16MB
+  framework:
+    type: esp-idf
+    advanced:
+      enable_idf_experimental_features: true
+      execute_from_psram: true
+      compiler_optimization: PERF
+      loop_task_stack_size: 16384
+    sdkconfig_options:
+      CONFIG_SPI_FLASH_YIELD_DURING_ERASE: "y"
+      CONFIG_ESP_DEFAULT_CPU_FREQ_MHZ_360: "y"
+      CONFIG_ESP_DEFAULT_CPU_FREQ_MHZ: "360"
+      CONFIG_ESP_TASK_WDT_TIMEOUT_S: "15"
+      CONFIG_SPIRAM_ALLOW_BSS_SEG_EXTERNAL_MEMORY: "y"
+      CONFIG_CACHE_L2_CACHE_256KB: "y"
+      CONFIG_SPIRAM_MEMTEST: "n"
+      CONFIG_LWIP_DHCP_DOES_ARP_CHECK: "n"
+      CONFIG_LWIP_DHCP_DOES_NOT_CHECK_OFFERED_IP: "y"
+      CONFIG_FREERTOS_GENERATE_RUN_TIME_STATS: "y"
+
+esp32_hosted:
+  variant: esp32c6
+  active_high: true
+  clk_pin: GPIO12
+  cmd_pin: GPIO13
+  d0_pin: GPIO11
+  d1_pin: GPIO10
+  d2_pin: GPIO9
+  d3_pin: GPIO8
+  reset_pin: GPIO15
+  slot: 1
+  sdio_frequency: 20MHz
+  use_psram: true
+
+esphome:
+  includes:
+    - firmware/ecran/tab5_lien_c6.h
+    - firmware/ecran/tab5_lien_c6.cpp
+    - firmware/ecran/tab5_dalle.h
+    - firmware/ecran/tab5_dalle.cpp
+    - firmware/ecran/tab5_batterie.cpp
+
+globals:
+  - id: lien_c6_branche
+    type: bool
+    initial_value: 'lien_c6_demarrage()'
+
+logger:
+  level: INFO
+  baud_rate: 115200
+  hardware_uart: USB_SERIAL_JTAG
+  tx_buffer_size: 2048
+  on_message:
+    level: INFO
+    then:
+      - lambda: 'journal_log_message(level, tag, message);'
+
+psram:
+  mode: hex
+  speed: 200MHz
+
+ota:
+  - platform: esphome
+    on_begin:
+      - globals.set: { id: ota_en_cours, value: 'true' }
+      - script.execute: { id: tab5_dalle_ota, debut: true }
+    on_abort:
+      - globals.set: { id: ota_en_cours, value: 'false' }
+      - script.execute: { id: tab5_dalle_ota, debut: false }
+    on_error:
+      - globals.set: { id: ota_en_cours, value: 'false' }
+      - script.execute: { id: tab5_dalle_ota, debut: false }
+
+safe_mode:
+  num_attempts: 10
+  boot_is_good_after: 30s
+
+i2c:
+  - id: bsp_bus
+    sda: GPIO31
+    scl: GPIO32
+    frequency: 400kHz
+
+pi4ioe5v6408:
+  - id: pi4ioe1
+    address: 0x43
+  - id: pi4ioe2
+    address: 0x44
+
+esp_ldo:
+  - voltage: 2.5V
+    channel: 3
+
+display:
+  - id: tab5_display
+    dimensions:
+      height: ${carte_dalle_h}
+      width: ${carte_dalle_l}
+    reset_pin:
+      pi4ioe5v6408: pi4ioe1
+      number: 4
+    pixel_mode: 16bit
+    color_order: RGB
+    update_interval: never
+    auto_clear_enabled: false
+
+touchscreen:
+  - id: touch
+    interrupt_pin: GPIO23
+    reset_pin:
+      pi4ioe5v6408: pi4ioe1
+      number: 5
+    calibration:
+      x_min: 0
+      x_max: ${carte_dalle_l}
+      y_min: 0
+      y_max: ${carte_dalle_h}
+    on_touch:
+      - lambda: 'ui_mark_activity();'
+      - script.execute: tab5_economie_appliquer
+    on_release:
+      then:
+        - if:
+            condition:
+              light.is_off: backlight
+            then:
+              - light.turn_on: backlight
+
+output:
+  - platform: ledc
+    pin: GPIO22
+    id: backlight_pwm
+    frequency: 1000Hz
+  - platform: template
+    id: backlight_plafonne
+    type: float
+    write_action:
+      - lambda: |-
+          if (state > 0.0f) demarrage_marquer(EtapeDemarrage::RETRO);
+          id(backlight_pwm).set_level(economie_sortie_retro(state));
+
+light:
+  - platform: monochromatic
+    output: backlight_plafonne
+    name: "Display Backlight"
+    id: backlight
+    restore_mode: RESTORE_DEFAULT_ON
+    initial_state:
+      brightness: 75%
+    default_transition_length: 250ms
+    on_turn_on:
+      - script.execute: tab5_dalle_rallumer
+      - globals.set: { id: ecran_eteint_par_nuit, value: 'false' }
+      - lambda: 'id(ecran_allume_ms) = millis();'
+      - script.execute: tab5_economie_appliquer
+    on_turn_off:
+      - lambda: 'dalle_eteindre(id(tab5_display));'
+      - lvgl.pause:
+
+script:
+  - id: tab5_dalle_rallumer
+    mode: restart
+    then:
+      - if:
+          condition:
+            lambda: 'return dalle_reveiller(id(tab5_display));'
+          then:
+            - delay: 120ms
+      - if:
+          condition:
+            lambda: 'return id(backlight).remote_values.is_on() && !(dalle_noire_pendant_ota() && id(ota_en_cours));'
+          then:
+            - lambda: 'dalle_rallumer(id(tab5_display));'
+            - lvgl.resume:
+  - id: tab5_dalle_ota
+    parameters:
+      debut: bool
+    then:
+      - if:
+          condition:
+            lambda: 'return dalle_noire_pendant_ota() && id(backlight).remote_values.is_on();'
+          then:
+            - if:
+                condition:
+                  lambda: 'return debut;'
+                then:
+                  - lambda: 'dalle_eteindre(id(tab5_display));'
+                else:
+                  - script.execute: tab5_dalle_rallumer
+
+i2s_audio:
+  - id: mic_bus
+    i2s_lrclk_pin: GPIO29
+    i2s_bclk_pin: GPIO27
+    i2s_mclk_pin: GPIO30
+
+audio_adc:
+  - platform: es7210
+    id: es7210_adc
+    bits_per_sample: 16bit
+    sample_rate: 16000
+    mic_gain: 30dB
+
+microphone:
+  - platform: i2s_audio
+    id: tab5_microphone
+    i2s_din_pin: GPIO28
+    sample_rate: 16000
+    bits_per_sample: 16bit
+    adc_type: external
+    correct_dc_offset: true
+
+audio_dac:
+  - platform: es8388
+    id: es8388_dac
+
+speaker:
+  - platform: i2s_audio
+    id: tab5_speaker
+    i2s_dout_pin: GPIO26
+    audio_dac: es8388_dac
+    dac_type: external
+    channel: stereo
+    buffer_duration: 500ms
+    timeout: 2000ms
+    bits_per_sample: 16bit
+    sample_rate: 48000
+
+media_player:
+  - platform: speaker
+    name: "Vigie Alerte Audio"
+    id: speaker_player
+    announcement_pipeline:
+      speaker: tab5_speaker
+      format: FLAC
+      sample_rate: 24000
+      num_channels: 1
+
+switch:
+  # Ampli NS4150B commandé par l'expandeur pi4ioe1 (0x43) broche 1 sur le Tab5
+  - platform: gpio
+    id: speaker_enable
+    name: "Amplificateur Audio"
+    pin:
+      pi4ioe5v6408: pi4ioe1
+      number: 1
+    restore_mode: ALWAYS_ON
+    internal: true
+  - platform: gpio
+    id: charge_enable
+    pin:
+      pi4ioe5v6408: pi4ioe2
+      number: 7
+    restore_mode: ALWAYS_OFF
+    internal: true
+  - platform: gpio
+    id: quick_charge
+    pin:
+      pi4ioe5v6408: pi4ioe2
+      number: 5
+      inverted: true
+    restore_mode: ALWAYS_OFF
+    internal: true
+
+# Moniteur de batterie 2S INA226 (0x41 sur bsp_bus) propre au M5Stack Tab5
+sensor:
+  - platform: ina226
+    id: ina226_batterie
+    i2c_id: bsp_bus
+    address: 0x41
+    shunt_resistance: 0.005 ohm
+    max_current: 8.192 A
+    adc_averaging: 16
+    update_interval: 60s
+    bus_voltage:
+      id: batterie_tension
+      name: "Tension Batterie Tab5"
+      internal: true
+    current:
+      id: batterie_courant
+      name: "Courant Batterie Tab5"
+      internal: true
+
+button:
+  - platform: restart
+    id: btn_restart
+    name: "Redémarrage Système"
+
+debug:

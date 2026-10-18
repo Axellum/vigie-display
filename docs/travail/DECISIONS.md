@@ -28,3 +28,15 @@
 * **Date** : 2026-10-18 · **Statut** : Accepté
 * **Décision** : Conserver en mémoire flash non-volatile (NVS) la configuration des zones mondiales suivies, leurs dernières prévisions météo et les dernières alertes catastrophes reçues, avec horodatage UTC.
 * **Pourquoi** : Affichage instantané dès la première image au démarrage (`< 5,6 s`, avant même que le Wi-Fi C6 ait négocié le bail DHCP à `~9,4 s`) et maintien des informations critiques à l'écran en cas de coupure Internet pendant une catastrophe.
+
+## ADR-0005 — Architecture Multi-Écrans / Multi-Cartes (`waveshare-7b` 1024×600 & `tab5` 1280×720)
+* **Date** : 2026-10-18 · **Statut** : Accepté (Directive d'Axel)
+* **Contexte** : Le projet doit pouvoir tourner aussi bien sur le terminal 7" Waveshare (`1024×600`) que sur la tablette 5" M5Stack Tab5 V2 (`1280×720`, avec batterie INA226, IMU BMI270, codec ES8388) et de futurs écrans ESP32-P4 (`8"`, `10"`), sans dupliquer le code métier ni maintenir deux firmwares divergents.
+* **Décision** : Piloter la cible matérielle par une unique substitution `vigie_carte` (`waveshare-7b` ou `tab5`) qui charge dynamiquement `geometrie-${vigie_carte}.yaml` et `carte-${vigie_carte}.yaml`, tandis que `firmware/socle/tab5_geometrie.h` et `vigie_modele_mondial.h` adaptent automatiquement les dimensions et polices à la résolution cible.
+* **Pourquoi** : Un seul code C++ métier, zéro duplication de maintenance, et possibilité d'utiliser le M5Stack Tab5 V2 en mobilité (batterie intégrée + GPS Grove) ou le Waveshare 7B en poste fixe / table à cartes marine.
+
+## ADR-0006 — Décodage GPS NMEA 0183 Autonome & Géométrie Haversine Temps Réel
+* **Date** : 2026-10-18 · **Statut** : Accepté
+* **Contexte** : En usage mobile ou maritime (bateau en mer, véhicule d'intervention), la position de l'utilisateur change continuellement et le terminal doit pouvoir fonctionner même sans connexion Internet ou avec un bus NMEA 0183 de bord.
+* **Décision** : Implémenter dans `firmware/socle/vigie_modele_mondial.cpp` un décodeur NMEA 0183 pur C++ (`$GxGGA`, `$GxRMC` avec validation XOR `*HH`) et un moteur trigonométrique Haversine + Azimut 16 secteurs recalculant en temps réel la distance et le relèvement de chaque catastrophe mondiale par rapport à la position GPS courante. Support matériel sur connecteur `P3` (`GPIO4/5`) ou `RS485` (`GPIO26/27`) pour la Waveshare 7B, et sur **Port A Grove (`GPIO53/54`) avec M5Stack Unit GPS SMA (AT6668)** pour le M5Stack Tab5 V2.
+

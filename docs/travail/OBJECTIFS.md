@@ -36,7 +36,18 @@ En cas d'alerte **ORANGE** ou **ROUGE** (globale majeure ou dans le rayon de geo
 **actif** · depuis 2026-10-18
 Interface multilingue native dès la conception (FR, EN, ES, DE, IT, PT, TR via le moteur `i18n` en table compacte), unités configurables (°C/°F, km/h / kt / mph, hPa / inHg), thèmes Haute Lisibilité Jour/Nuit (bascule en `< 65 ms`), fonctionnement dégradé hors-ligne sur cache NVS.
 
+## O-7 — Télémétrie GPS / GNSS NMEA 0183 Temps Réel & Mode Marine
+**actif** · depuis 2026-10-18
+Prise en charge native d'un récepteur GPS/GNSS matériel externe (UART `P3` `GPIO4/5`, bus `RS485` `GPIO26/27` NMEA 0183 sur Waveshare 7B, ou **M5Stack Unit GPS SMA AT6668** sur Port A Grove `GPIO53/54` du Tab5) :
+- Décodage C++ sans allocation (`$GxGGA`, `$GxRMC`, checksum XOR `*HH`), coordonnées nautiques DMS/DMM (`48°51.39'N 002°21.13'E`), SOG (nœuds & km/h), COG (°), HDOP et altitude MSL.
+- Recalcul automatique temps réel des distances orthodromiques Haversine, caps/azimuts et points cardinaux vers tous les épicentres et bouées marines dès que le bateau ou véhicule se déplace.
+
+## O-8 — Architecture Multi-Écrans / Multi-Cartes (`waveshare-7b` & `tab5`)
+**actif** · depuis 2026-10-18
+Un unique socle métier C++/LVGL compilable sans duplication sur **Waveshare 7B (`1024×600`)**, **M5Stack Tab5 V2 (`1280×720`)** et futurs écrans ESP32-P4 (`8"`, `10"`) par simple substitution (`vigie_carte: waveshare-7b` ou `tab5`).
+
 ## 🚫 Hors Scope Explicite
 - **Aucune entité domotique locale** (ni lumières, ni volets, ni thermostat de salon, ni capteurs de plantes, ni caméras RTSP maison).
 - **Aucun jeu d'arcade** (les 8 consoles du Tab5 sont exclues pour garder une empreinte Flash/RAM dédiée à la cartographie et aux données mondiales).
 - **Aucune dépendance au protocole natif ESPHome API de Home Assistant** pour les données métier.
+

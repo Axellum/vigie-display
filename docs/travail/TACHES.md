@@ -5,14 +5,15 @@
 
 ---
 
-## Lot 1 — Socle Matériel Autonome Waveshare 7B
+## Lot 1 — Socle Matériel Autonome Multi-Écrans (`waveshare-7b` & `tab5`)
 - ✅ `#E01` — lot1 — **P0** — Créer le dépôt local `alerte_mondiale_7b`, l'arborescence et la documentation complète (`OBJECTIFS`, `PLAN`, `HISTORIQUE_DEV`, `DECISIONS`, `BRIQUES_REPRISES_TAB5`).
 - ✅ `#E02` — lot1 — **P0** — Extraire les briques C++ (`socle/`, `ecran/`), polices (`fonts/`) et paquets Waveshare 7B depuis `00ProjetTab` sans les jeux ni la domotique.
-- ⏳ `#E03` — lot1 — **P0** — Épurer `carte-waveshare-7b.yaml` des bouchons domotiques hérités du Tab5 (`ina226_batterie`, `headphone_detect`, `wifi_power`...) et créer le point d'entrée autonome `vigie-mondiale-7b.yaml` — dépend `#E02`.
-- ⏳ `#E04` — lot1 — **P1** — Vérifier la compilation locale autonome ESPHome 2026.9.1 (`1024×600`, `rotation: 0`) sans connexion Home Assistant — dépend `#E03`.
+- ✅ `#E03` — lot1 — **P0** — Épurer `carte-waveshare-7b.yaml` des bouchons domotiques hérités du Tab5 (`ina226_batterie`, `headphone_detect`, `wifi_power`...), ajouter le support Multi-Écrans (`carte-tab5.yaml`, `geometrie-tab5.yaml`, `tab5-hardware.yaml`) et créer `vigie-gps-nmea.yaml` + `vigie-mondiale-7b.yaml` — dépend `#E02`.
+- ✅ `#E03b` — lot1 — **P0** — Rédiger `docs/audits/BASE_CONNAISSANCE_WAVESHARE_7B.md` et `docs/audits/AUDIT_GPS_ET_MODE_MARINE_7B.md` (incluant M5Stack Unit GPS SMA sur Port A Grove du Tab5) — dépend `#E01`.
+- ⏳ `#E04` — lot1 — **P1** — Vérifier la compilation locale autonome ESPHome 2026.9.1 (`1024×600` et `1280×720`, `rotation: 0`) sans connexion Home Assistant — dépend `#E03`.
 
-## Lot 2 — Modèle de Données Mondial & Parseur
-- ⏳ `#E05` — lot2 — **P0** — Créer `firmware/socle/vigie_modele_mondial.h` (structures `WorldZoneWeather` pour 10 zones mondiales + `NaturalHazardAlert` pour séismes, tsunamis, volcans, cyclones, tornades, inondations, feux, météo spatiale) + tests unitaires PC — dépend `#E02`.
+## Lot 2 — Modèle de Données Mondial, Marine & Parseur GPS NMEA
+- ✅ `#E05` — lot2 — **P0** — Créer `firmware/socle/vigie_modele_mondial.h/.cpp` (structures `VigieGpsFix`, `VigieZoneMeteo`, `VigieEtatMarin`, `VigieAlerteCatastrophe`, décodeur NMEA `$GxGGA`/`$GxRMC`, Haversine/Azimut temps réel, profils Multi-Écrans) + tests unitaires PC (`tests/test_socle_et_gps.py`) — dépend `#E02`.
 - ⏳ `#E06` — lot2 — **P1** — Adapter la persistance NVS (`tab5_forecast.cpp` + alertes) au modèle multi-zones mondial — dépend `#E05`.
 
 ## Lot 3 — Client API Direct (HTTPS / WebSocket)
