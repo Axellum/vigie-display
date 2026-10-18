@@ -1,0 +1,114 @@
+# ==============================================================================
+# PAQUET : VIGIE-CLIENT-API (Connecteur Direct HTTPS/REST & Cache NVS Résilient)
+# ==============================================================================
+# Dialogue directement avec `alerte_mondiale_api` (ZÉRO dépendance Home Assistant) :
+#   - Construit dynamiquement l'URL `/v1/embedded/frame?device_type=${vigie_carte}`
+#     et injecte `&lat=...&lon=...&marine=1` dès qu'un fix GPS NMEA est actif.
+#   - Décode la trame via `vigie_client_api_recevoir_trame()` sans allocation.
+#   - Persiste et restaure l'état en NVS avec vérification d'intégrité CRC32 (`VIG1`).
+#   - Déclenche automatiquement le réveil de la dalle MIPI-DSI (`tab5_dalle_rallumer`)
+#     et l'alerte sonore (`tab5_alerte_sonner`) en cas d'alerte ROUGE ou ORANGE proche.
+# ==============================================================================
+
+substitutions:
+  vigie_api_base_url: "http://192.168.1.100:8080"
+  vigie_api_poll_interval: "30s"
+
+http_request:
+  id: vigie_http_client
+  useragent: "VigieMondiale-ESP32P4/2.0 (${vigie_carte})"
+  timeout: 8s
+  verify_ssl: false
+
+script:
+  - id: vigie_api_rafraichir
+    mode: single
+    then:
+      - lambda: |-
+          char url_buf[256] = {};
+          if (!vigie_construire_url_api(
+                  "${vigie_api_base_url}",
+                  "${vigie_carte}",
+                  g_vigie_etat_mondial.gps,
+                  url_buf,
+                  sizeof(url_buf))) {
+            return;
+          }
+          std::strncpy(g_vigie_statut_api.derniere_url, url_buf, sizeof(g_vigie_statut_api.derniere_url) - 1);
+          ESP_LOGD("vigie_api", "Requête API : %s", url_buf);
+
+  - id: vigie_api_injecter_trame
+    parameters:
+      payload: string
+    then:
+      - lambda: |-
+          VigieDecisionUrgence urgence{};
+          if (vigie_client_api_recevoir_trame(
+                  payload.c_str(),
+                  g_vigie_etat_mondial,
+                  g_vigie_statut_api,
+                  millis(),
+                  urgence)) {
+            id(vigie_api_en_ligne).publish_state(true);
+            id(vigie_alertes_rouges).publish_state(g_vigie_etat_mondial.nb_alertes_rouges);
+            id(vigie_alertes_oranges).publish_state(g_vigie_etat_mondial.nb_alertes_oranges);
+            id(vigie_alertes_jaunes).publish_state(g_vigie_etat_mondial.nb_alertes_jaunes);
+            id(vigie_indice_kp).publish_state(g_vigie_etat_mondial.kp);
+            if (urgence.declencher) {
+              ESP_LOGW("vigie_api", "URGENCE DÉTECTÉE (%s — %.1f km) : réveil écran & alerte sonore",
+                       urgence.alerte_id, urgence.distance_km);
+              if (urgence.reveiller_dalle) {
+                id(backlight).turn_on().perform();
+              }
+            }
+          }
+
+interval:
+  - interval: ${vigie_api_poll_interval}
+    then:
+      - script.execute: vigie_api_rafraichir
+
+  - interval: 5s
+    then:
+      - lambda: |-
+          char statut_buf[64] = {};
+          if (vigie_formater_statut_fraicheur(g_vigie_statut_api, millis(), statut_buf, sizeof(statut_buf))) {
+            id(vigie_api_statut_texte).publish_state(statut_buf);
+          }
+
+binary_sensor:
+  - platform: template
+    id: vigie_api_en_ligne
+    name: "Vigie API En Ligne"
+    internal: true
+
+sensor:
+  - platform: template
+    id: vigie_alertes_rouges
+    name: "Vigie Alertes Rouges Actives"
+    accuracy_decimals: 0
+    internal: true
+
+  - platform: template
+    id: vigie_alertes_oranges
+    name: "Vigie Alertes Oranges Actives"
+    accuracy_decimals: 0
+    internal: true
+
+  - platform: template
+    id: vigie_alertes_jaunes
+    name: "Vigie Alertes Jaunes Actives"
+    accuracy_decimals: 0
+    internal: true
+
+  - platform: template
+    id: vigie_indice_kp
+    name: "Vigie Indice Géomagnétique Kp"
+    accuracy_decimals: 1
+    internal: true
+
+text_sensor:
+  - platform: template
+    id: vigie_api_statut_texte
+    name: "Vigie Statut Fraîcheur Données"
+    internal: true

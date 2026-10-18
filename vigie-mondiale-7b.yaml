@@ -11,8 +11,8 @@
 #   - `tab5`         : M5Stack Tab5 V2 (5" 1280×720 MIPI-DSI, ES8388, INA226, BMI270)
 #
 # Configuration GPS UART (`vigie_gps_rx_pin` / `vigie_gps_tx_pin`) :
-#   - Waveshare 7B connecteur P3 UART : RX=GPIO5, TX=GPIO4 (défaut)
-#   - Waveshare 7B bornier RS485      : RX=GPIO27, TX=GPIO26
+#   - Waveshare 7B connecteur P3 UART : RX=GPIO4, TX=GPIO5 (défaut)
+#   - Waveshare 7B bornier RS485      : RX=GPIO26, TX=GPIO27
 #   - M5Stack Tab5 Port A Grove (SMA) : RX=GPIO53, TX=GPIO54 (Unit GPS SMA AT6668)
 # ==============================================================================
 
@@ -27,9 +27,12 @@ substitutions:
   tab5_imu_pkg: tab5-imu
   # Paramètres UART GPS NMEA 0183
   vigie_gps_uart_id: uart_vigie_gps
-  vigie_gps_rx_pin: GPIO5
-  vigie_gps_tx_pin: GPIO4
+  vigie_gps_rx_pin: GPIO4
+  vigie_gps_tx_pin: GPIO5
   vigie_gps_baud_rate: "9600"
+  # Endpoint du backend alerte_mondiale_api
+  vigie_api_base_url: "http://192.168.1.100:8080"
+  vigie_api_poll_interval: "30s"
 
 esphome:
   name: ${name}
@@ -39,6 +42,8 @@ esphome:
     - firmware/socle/tab5_geometrie.h
     - firmware/socle/vigie_modele_mondial.h
     - firmware/socle/vigie_modele_mondial.cpp
+    - firmware/ecran/vigie_client_api.h
+    - firmware/ecran/vigie_client_api.cpp
   on_boot:
     priority: 600
     then:
@@ -57,6 +62,7 @@ packages:
   themes: !include firmware/paquets/tab5-themes.yaml
   alertes_audio: !include firmware/paquets/tab5-alertes.yaml
   gps_nmea: !include firmware/paquets/vigie-gps-nmea.yaml
+  client_api: !include firmware/paquets/vigie-client-api.yaml
 
 logger:
   level: INFO
