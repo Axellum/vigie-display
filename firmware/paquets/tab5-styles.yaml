@@ -135,14 +135,14 @@ font:
   # taille suit la carte, `carte_police_echelle` de Tab5/paquets/geometrie-<carte>.yaml
   # (1 sur le Tab5 : les tailles de l'id ; 0,82 sur la Waveshare 7B), arrondie. L'id garde
   # la taille du Tab5. tests/commun.py (taille_police) lit la même expression.
-  - file: "Tab5/fonts/roboto_700.ttf"
+  - file: "assets/polices/roboto_700.ttf"
     id: roboto_32_b
     size: ${ (32 * (carte_police_echelle | float)) | round | int }
     bpp: 2   # 4 niveaux de lissage au lieu de 16 (essai D8, 26/09/2026) :
              # bitmaps divisés par deux, validé à l'œil par Axel
     glyphs: &latin1 ' !"#$%&''()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\]^_`abcdefghijklmnopqrstuvwxyz{|}~€‚ƒ„…†‡ˆ‰Š‹ŒŽ‘’“”•–—˜™š›œžŸ¡¢£¤¥¦§¨©ª«¬®¯°±²³´µ¶·¸¹º»¼½¾¿ÀÁÂÃÄÅÆÇÈÉÊËÌÍÎÏÐÑÒÓÔÕÖ×ØÙÚÛÜÝÞßàáâãäåæçèéêëìíîïðñòóôõö÷øùúûüýþÿİōřĞğıŞş'
   # Chiffres de l'horloge et de l'écran de sonnerie : rien d'autre.
-  - file: "Tab5/fonts/roboto_700.ttf"
+  - file: "assets/polices/roboto_700.ttf"
     id: roboto_130_b
     size: ${ (130 * (carte_police_echelle | float)) | round | int }
     bpp: 2   # 4 niveaux de lissage au lieu de 16 (essai D8, 26/09/2026) :
@@ -155,12 +155,12 @@ font:
   # Le « — » : tokens par seconde inconnus du popup Serveur IA (ADR-0059), jamais un
   # zéro inventé. Le « + » : net du mois de la page Bilan du popup Énergie (« +23.4 »,
   # ADR-0062).
-  - file: "Tab5/fonts/roboto_700.ttf"
+  - file: "assets/polices/roboto_700.ttf"
     id: roboto_55_b
     size: ${ (55 * (carte_police_echelle | float)) | round | int }
     bpp: 4
     glyphs: '+-0123456789: °C.%—'
-  - file: "Tab5/fonts/roboto_700.ttf"
+  - file: "assets/polices/roboto_700.ttf"
     id: roboto_45_b
     size: ${ (45 * (carte_police_echelle | float)) | round | int }
     bpp: 2   # 4 niveaux de lissage au lieu de 16 (essai D8, 26/09/2026) :
@@ -171,7 +171,7 @@ font:
   # (−12,4 Ko). La règle 6 de tools/check_tab5_code_rules.py vérifie toujours que
   # la police de lbl_date couvre ses jours, mois et chiffres.
 
-  - file: "Tab5/fonts/roboto_700.ttf"
+  - file: "assets/polices/roboto_700.ttf"
     id: roboto_22
     size: 22
     bpp: 4
@@ -193,7 +193,7 @@ font:
   # pots, à la même taille. S'appelait mdi_font_80 (l'id mentait), renommé le 08/09/2026.
   # Taille de la carte (carte_police_echelle, lot 3 du portage 1024×600) : ses boutons et
   # ses tuiles sont ramenés à son écran, l'icône aussi (70 sur le Tab5).
-  - file: "Tab5/fonts/materialdesignicons-webfont.ttf"
+  - file: "assets/polices/materialdesignicons-webfont.ttf"
     id: mdi_font_70
     size: ${ (70 * (carte_police_echelle | float)) | round | int }
     bpp: 1
@@ -319,7 +319,7 @@ font:
   # 60 px — vigilances Météo-France (alerte_slot_*, parse_and_update_vigilance) et
   # goutte / flocon de la prévision de pluie (icon_rain_predict). Taille de la carte, comme
   # mdi_font_70 (lot 3 du portage) : la tuile des prévisions est ramenée à son écran.
-  - file: "Tab5/fonts/materialdesignicons-webfont.ttf"
+  - file: "assets/polices/materialdesignicons-webfont.ttf"
     id: mdi_font_alert
     size: ${ (60 * (carte_police_echelle | float)) | round | int }
     bpp: 1
@@ -342,7 +342,7 @@ font:
   # réveil, en-tête de la sélection des consoles, cartes du popup Énergie ; icône de la
   # tuile − / + de l'accueil ; moyeu de la roue de navigation (rose des vents, ADR-0042).
   # Les températures de l'accueil sont en mdi_font_temp depuis le 18/10/2026.
-  - file: "Tab5/fonts/materialdesignicons-webfont.ttf"
+  - file: "assets/polices/materialdesignicons-webfont.ttf"
     id: mdi_font_45
     size: 45
     bpp: 1
@@ -485,7 +485,7 @@ font:
   # (carte_police_echelle, 18/10/2026, demande d'Axel), comme la valeur qu'elles bordent.
   # Sur la 7B, une icône restée à 45 px laissait 4 px entre le « ° » du salon et l'icône de
   # la serre, et le − de 56 px remplissait presque son bouton de 40.
-  - file: "Tab5/fonts/materialdesignicons-webfont.ttf"
+  - file: "assets/polices/materialdesignicons-webfont.ttf"
     id: mdi_font_temp
     size: ${ (45 * (carte_police_echelle | float)) | round | int }
     bpp: 1
@@ -495,7 +495,7 @@ font:
       - "\U000F050F"  # thermometer (pièce du mode HA)
       - "\U000F056C"  # view-carousel (seconde température absente : son tap change la zone à gauche de l'horloge, ADR-0051)
       - "\U000F058E"  # water-percent (humidité de la pièce du mode HA)
-  - file: "Tab5/fonts/materialdesignicons-webfont.ttf"
+  - file: "assets/polices/materialdesignicons-webfont.ttf"
     id: mdi_font_pas
     size: ${ (56 * (carte_police_echelle | float)) | round | int }
     bpp: 1
@@ -505,7 +505,7 @@ font:
 
   # 56 px — cartes du popup plantes, boutons -/+ de la clim, tuiles des consoles. (Le
   # « power » du bouton On / Off du popup lumière est parti avec lui le 09/10/2026, ADR-0046.)
-  - file: "Tab5/fonts/materialdesignicons-webfont.ttf"
+  - file: "assets/polices/materialdesignicons-webfont.ttf"
     id: mdi_font_56
     size: 56
     bpp: 1
@@ -528,7 +528,7 @@ font:
 
   # 32 px — barre de titre des modales (ADR-0009), tuiles du dashboard, détail du jour
   # du calendrier, titres de rangée du réveil, Console système.
-  - file: "Tab5/fonts/materialdesignicons-webfont.ttf"
+  - file: "assets/polices/materialdesignicons-webfont.ttf"
     id: mdi_font_32
     size: 32
     bpp: 1
@@ -680,7 +680,7 @@ font:
       # <<< tuiles
 
   # 120 px — grand micro de l'assistant, note de la pochette absente du popup Musique.
-  - file: "Tab5/fonts/materialdesignicons-webfont.ttf"
+  - file: "assets/polices/materialdesignicons-webfont.ttf"
     id: mdi_font_120
     size: 120
     bpp: 1
@@ -692,7 +692,7 @@ font:
   # tablette, ou une prise sans batterie), pluie des cartes horaires, et mini icônes des
   # trois boutons du haut : l'écran qu'ouvre leur appui long (mini_glyphe, tab5_zones.cpp,
   # 07/10/2026 : le glyphe de l'en-tête de chaque popup).
-  - file: "Tab5/fonts/materialdesignicons-webfont.ttf"
+  - file: "assets/polices/materialdesignicons-webfont.ttf"
     id: mdi_font_26
     size: 26
     bpp: 1
@@ -743,7 +743,7 @@ font:
       - "\U000F14C9"  # plus-minus-variant (mini icône : appareil suivant de la tuile − / +)
 
   # 36 px — popup Assistant vocal (assistant_popup.yaml).
-  - file: "Tab5/fonts/materialdesignicons-webfont.ttf"
+  - file: "assets/polices/materialdesignicons-webfont.ttf"
     id: mdi_assist_36
     size: 36
     bpp: 1
@@ -764,7 +764,7 @@ font:
   # roue_choix.yaml) : icônes posées par glyphe_roue() (tab5_roue.cpp, MDI_CODE_TARGETS de
   # la règle 7). Celles de la clim sont celles de son popup ; celles de la roue de
   # navigation (ADR-0042) disent ses familles et ses écrans.
-  - file: "Tab5/fonts/materialdesignicons-webfont.ttf"
+  - file: "assets/polices/materialdesignicons-webfont.ttf"
     id: mdi_font_36
     size: 36
     bpp: 1
@@ -820,7 +820,7 @@ font:
   # la grosse icône centrale n'existe plus, ~196 Ko de flash jamais affichés.
   # Les 10 glyphes = les 10 constantes de MeteoIcon (tab5_custom.h) ; F003 et F004,
   # présents dans le TTF mais jamais affichés, sont retirés le 25/09/2026.
-  - file: "Tab5/fonts/IconeMeteo.ttf"
+  - file: "assets/polices/IconeMeteo.ttf"
     id: font_meteo_card
     size: 120
     bpp: 2   # 4 niveaux de lissage au lieu de 16 (essai D8, 26/09/2026) :
@@ -828,7 +828,7 @@ font:
     glyphs: "\U0000F000\U0000F001\U0000F002\U0000F005\U0000F006\U0000F007\U0000F00B\U0000F00E\U0000F00F\U0000F015"
 
   # Calque 2 réduit (lune / soleil derrière le nuage de « partlycloudy »).
-  - file: "Tab5/fonts/IconeMeteo.ttf"
+  - file: "assets/polices/IconeMeteo.ttf"
     id: font_meteo_card_small
     size: 80
     bpp: 2   # 4 niveaux de lissage au lieu de 16 (essai D8, 26/09/2026) :
@@ -837,12 +837,12 @@ font:
 
   # Les mêmes icônes à 40 % (48 et 32 px), popup Météo (ADR-0043) : heures et jours
   # (update_meteo_icon(…, 40), tab5_meteo.cpp). Mêmes 10 glyphes, même calque 2 réduit.
-  - file: "Tab5/fonts/IconeMeteo.ttf"
+  - file: "assets/polices/IconeMeteo.ttf"
     id: font_meteo_48
     size: 48
     bpp: 2
     glyphs: "\U0000F000\U0000F001\U0000F002\U0000F005\U0000F006\U0000F007\U0000F00B\U0000F00E\U0000F00F\U0000F015"
-  - file: "Tab5/fonts/IconeMeteo.ttf"
+  - file: "assets/polices/IconeMeteo.ttf"
     id: font_meteo_32
     size: 32
     bpp: 2
@@ -856,7 +856,7 @@ font:
   # pièce blanche (corps ivoire + contour sombre) — d'où les 12 glyphes et pas 6.
   # size 80 : encre 72×60 px dans une case de 84 (calibré, aucun débordement).
   # bpp 4 obligatoire : en bpp 1 les contours fins (couronne, crinière) crénellent.
-  - file: "Tab5/fonts/ChessPieces.ttf"
+  - file: "assets/polices/ChessPieces.ttf"
     id: chess_pieces_80
     size: 80
     bpp: 4

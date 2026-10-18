@@ -1,0 +1,17 @@
+# ============================================================================
+# [AI-CONTEXT]
+# @file geometrie-tab5.yaml
+# @role Taille de l'écran du M5Stack Tab5 V2 (ADR-0005 Multi-Écrans) : 5" IPS
+#       1280×720 en paysage (dalle native portrait 720×1280 tournée à 270° par LVGL).
+#       Inclus par `carte-tab5.yaml` lorsque `vigie_carte: tab5` (ou `tab5_carte: tab5`).
+# @architecture_constraint Mêmes clés que `geometrie-waveshare-7b.yaml` :
+#       `carte_ecran_l`, `carte_ecran_h`, `carte_dalle_l`, `carte_dalle_h`,
+#       `carte_rotation`, `carte_police_echelle`.
+# ============================================================================
+substitutions:
+  carte_ecran_l: "1280"
+  carte_ecran_h: "720"
+  carte_dalle_l: "720"
+  carte_dalle_h: "1280"
+  carte_rotation: "270"
+  carte_police_echelle: "1"

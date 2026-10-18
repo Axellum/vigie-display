@@ -1,0 +1,79 @@
+# ==============================================================================
+# STATION MÉTÉO, MARINE & ALERTE CATASTROPHE MONDIALE — POINT D'ENTRÉE AUTONOME
+# ==============================================================================
+# Dépôt : Axellum/alerte-mondiale-7b
+# Architecture 100 % autonome (ZÉRO dépendance Home Assistant, pas de bloc api:)
+#
+# ARCHITECTURE MULTI-ÉCRANS / MULTI-CARTES :
+# Changez simplement `vigie_carte` (et `tab5_carte`) ci-dessous pour compiler
+# le même socle métier C++ (Météo Mondiale, Marine, Catastrophes, GPS NMEA) sur :
+#   - `waveshare-7b` : Waveshare ESP32-P4-WIFI6-Touch-LCD-7B (7" 1024×600 RGB DPI)
+#   - `tab5`         : M5Stack Tab5 V2 (5" 1280×720 MIPI-DSI, ES8388, INA226, BMI270)
+#
+# Configuration GPS UART (`vigie_gps_rx_pin` / `vigie_gps_tx_pin`) :
+#   - Waveshare 7B connecteur P3 UART : RX=GPIO5, TX=GPIO4 (défaut)
+#   - Waveshare 7B bornier RS485      : RX=GPIO27, TX=GPIO26
+#   - M5Stack Tab5 Port A Grove (SMA) : RX=GPIO53, TX=GPIO54 (Unit GPS SMA AT6668)
+# ==============================================================================
+
+substitutions:
+  name: vigie-mondiale-7b
+  friendly_name: "Vigie Météo & Alerte Catastrophe Mondiale"
+  # Sélection de la cible matérielle : "waveshare-7b" (1024x600) ou "tab5" (1280x720)
+  vigie_carte: waveshare-7b
+  tab5_carte: ${vigie_carte}
+  # Options spécifiques au M5Stack Tab5 V2 (ignorées sur waveshare-7b)
+  tab5_ecran: ili9881c
+  tab5_imu_pkg: tab5-imu
+  # Paramètres UART GPS NMEA 0183
+  vigie_gps_uart_id: uart_vigie_gps
+  vigie_gps_rx_pin: GPIO5
+  vigie_gps_tx_pin: GPIO4
+  vigie_gps_baud_rate: "9600"
+
+esphome:
+  name: ${name}
+  friendly_name: ${friendly_name}
+  min_version: 2025.10.0
+  includes:
+    - firmware/socle/tab5_geometrie.h
+    - firmware/socle/vigie_modele_mondial.h
+    - firmware/socle/vigie_modele_mondial.cpp
+  on_boot:
+    priority: 600
+    then:
+      - lambda: |-
+          vigie_initialiser_etat_mondial(g_vigie_etat_mondial);
+          ESP_LOGI("vigie", "Socle Vigie Mondiale initialisé (%s — %dx%d px)",
+                   "${vigie_carte}",
+                   (int)TAB5_LARGEUR_ECRAN,
+                   (int)TAB5_HAUTEUR_ECRAN);
+
+packages:
+  geometrie: !include firmware/paquets/geometrie-${vigie_carte}.yaml
+  carte: !include firmware/paquets/carte-${vigie_carte}.yaml
+  ui_tokens: !include firmware/paquets/tab5-ui-tokens.yaml
+  styles: !include firmware/paquets/tab5-styles.yaml
+  themes: !include firmware/paquets/tab5-themes.yaml
+  alertes_audio: !include firmware/paquets/tab5-alertes.yaml
+  gps_nmea: !include firmware/paquets/vigie-gps-nmea.yaml
+
+logger:
+  level: INFO
+  baud_rate: 115200
+
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+  fast_connect: true
+  reboot_timeout: 0s
+
+# Synchronisation horaire UTC 100 % autonome via serveurs NTP (plus un fallback GPS UTC)
+time:
+  - platform: sntp
+    id: vigie_time_sntp
+    timezone: UTC0
+    servers:
+      - 0.pool.ntp.org
+      - 1.pool.ntp.org
+      - time.cloudflare.com

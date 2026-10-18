@@ -33,15 +33,16 @@ graph TD
 
 ## 2. Découpage en Lots (Feuille de Route)
 
-### Lot 1 — Purge Domotique & Socle Matériel Autonome 7B *(En cours)*
-- Extraction des briques matérielles validées de `00ProjetTab` (`carte-waveshare-7b.yaml`, `tab5_dalle`, `tab5_lien_c6`, `tab5_barre_demarrage`, `tab5_demarrage`, `tab5_theme`, `tab5_i18n`).
+### Lot 1 — Purge Domotique & Socle Matériel Autonome Multi-Écrans (`waveshare-7b` & `tab5`) *(Terminé)*
+- Extraction et adaptation des briques matérielles validées pour **Waveshare 7B (`1024×600`)** et **M5Stack Tab5 V2 (`1280×720`)** (`carte-waveshare-7b.yaml`, `carte-tab5.yaml`, `tab5-hardware.yaml`, `geometrie-waveshare-7b.yaml`, `geometrie-tab5.yaml`).
 - Suppression de tous les appels à Home Assistant (`homeassistant.*`, services HA domotiques, jeux, volets, lumières, froid, suivi, caméras).
-- Création du point d'entrée autonome `vigie-mondiale-7b.yaml` compilable en 1024×600 (`rotation: 0`).
+- Création du point d'entrée autonome `vigie-mondiale-7b.yaml` multi-cibles (`vigie_carte: waveshare-7b` ou `tab5`) et du paquet GPS `firmware/paquets/vigie-gps-nmea.yaml`.
 
-### Lot 2 — Modèle de Données Mondial (`socle/`) & Contrat API
-- Remplacement de `tab5_modele_ha.h` par `vigie_modele_mondial.h` :
-  - `WorldZoneWeather` : météo temps réel + prévisions horaires/10j + fuseau UTC offset + indice UV / AQI / Kp pour jusqu'à 10 zones mondiales configurées.
-  - `NaturalHazardAlert` : identifiant unique, catégorie (`SEISME`, `TSUNAMI`, `VOLCAN`, `OURAGAN`, `TORNADE`, `INONDATION`, `PLUIE_EXTREME`, `FEU`, `SOLAIRE`), sévérité (`VERT`, `JAUNE`, `ORANGE`, `ROUGE`), latitude/longitude, magnitude/intensité, rayon d'impact, distance à la zone surveillée la plus proche, horodatage UTC.
+### Lot 2 — Modèle de Données Mondial, Marine & Parseur GPS NMEA (`socle/`) *(Terminé)*
+- Implémentation de `firmware/socle/vigie_modele_mondial.h` et `vigie_modele_mondial.cpp` (100 % C++ pur sans allocation dynamique) :
+  - `VigieGpsFix` : décodage NMEA 0183 temps réel (`$GxGGA`, `$GxRMC`, checksum XOR `*HH`), coordonnées nautiques DMS/DMM (`48°51.39'N 002°21.13'E`), SOG (nœuds et km/h), COG (°), HDOP, satellites, altitude MSL.
+  - `VigieZoneMeteo`, `VigiePluieNowcast` (radar 60 min au pas de 5 min) et `VigieEtatMarin` (houle primaire/secondaire, Douglas, marées, courants, SST).
+  - `VigieAlerteCatastrophe` : 12 catégories de risques mondiaux/marins, tri par criticité et proximité, recalcul temps réel des distances Haversine, azimuts et points cardinaux à 16 secteurs dès que le bateau/véhicule se déplace.
 - Sauvegarde et relecture instantanée en NVS au boot.
 
 ### Lot 3 — Connecteur Réseau Direct (`ecran/vigie_client_api.h/.cpp`)

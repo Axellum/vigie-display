@@ -4,6 +4,19 @@
 
 ---
 
+## 📅 2026-10-18 — Socle C++ Mondial, Parseur GPS NMEA 0183, Mode Marine & Architecture Multi-Écrans (`waveshare-7b` + `tab5`)
+- **Audits d'ingénierie consolidés** :
+  - `docs/audits/BASE_CONNAISSANCE_WAVESHARE_7B.md` : synthèse exhaustive des 4 audits matériels 7B + architecture Multi-Écrans (`waveshare-7b` 1024×600 et `tab5` 1280×720).
+  - `docs/audits/AUDIT_GPS_ET_MODE_MARINE_7B.md` : intégration GPS NMEA 0183 sur `P3` (`GPIO4/5`), bus `RS485` (`GPIO26/27` `THVD1406DR`) sur 7B, et **M5Stack Unit GPS SMA (AT6668)** sur **Port A Grove (`GPIO53/54`)** du M5Stack Tab5 V2.
+- **Modèle C++ Mondial & Parseur GPS NMEA (`firmware/socle/vigie_modele_mondial.h/.cpp`)** :
+  - Structures statiques sans allocation dynamique (`VigieGpsFix`, `VigiePluieNowcast`, `VigieEtatMarin`, `VigieZoneMeteo`, `VigieAlerteCatastrophe`, `VigieEtatMondial`, `VigieProfilCarte`).
+  - Décodeur NMEA 0183 complet (`$GxGGA`, `$GxRMC`, checksum XOR `*HH`), formatage nautique DMS/DMM (`48°51.39'N 002°21.13'E`), Haversine, azimut et secteur cardinal 16 rhumbs (FR/EN) avec recalcul temps réel dès que le navire/véhicule bouge.
+- **Paquets ESPHome 100 % autonomes (Zéro Home Assistant)** :
+  - Purge complète des bouchons domotiques dans `carte-waveshare-7b.yaml` et `tab5-alertes.yaml`, ajout des paquets matériels `carte-tab5.yaml`, `geometrie-tab5.yaml`, `tab5-hardware.yaml`, `vigie-gps-nmea.yaml` et point d'entrée `vigie-mondiale-7b.yaml`.
+  - Suite de tests unitaires `tests/test_socle_et_gps.py` validant la compilation C++ native (`g++`) et l'absence totale de dépendance Home Assistant.
+
+---
+
 ## 📅 2026-10-18 — Création du projet & Extraction du socle Waveshare 7B
 - **Décision stratégique d'Axel** : Création d'un projet et d'un dépôt totalement séparés de `00ProjetTab` pour concevoir un **terminal professionnel mondial de météo et d'alertes catastrophes naturelles** (séismes, tsunamis, volcans, ouragans, tornades, pluies extrêmes, feux, météo spatiale), **sans aucun lien avec Home Assistant**, articulé autour de la carte **Waveshare 7" (`ESP32-P4-WIFI6-Touch-LCD-7B`)** et d'un dépôt backend dédié (`alerte_mondiale_api`).
 - **Initialisation du dépôt local `H:\AuxFilsDesIdees\alerte_mondiale_7b`** :
