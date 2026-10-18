@@ -1,0 +1,97 @@
+# [AI-CONTEXT] Template paramétré (!include+vars), réutilisé 5x par forecast_hourly.yaml.
+# Vars: x_pos, idx, tuile. `hN_*` mis à jour par refresh_hourly_forecast() (tab5_custom.cpp) —
+# attention, l'ordre visuel gauche->droite est l'INVERSE de idx (cf. forecast_hourly.yaml) :
+# `tuile` = position visuelle T = 4 − idx, celle des pièces (ADR-0023).
+# Épaules (`icon_card_hN_g` / `_d`) et bouton invisible (`btn_hN_action`) : l'appareil de
+# la tuile T de la pièce de la page horaire (pièces 3 et 4), posés par tab5_tuiles.cpp ;
+# masqués sans appareil. Ids en `icon_card_*` : motif de la règle 7 pour la palette.
+# Appui long sur le corps d'une tuile sans appareil (bouton masqué) : le popup Météo
+# (ADR-0043, meteo_tuile_libre), jamais au bout d'un glissement (ui_appui_glisse).
+obj:
+  x: ${x_pos}
+  y: ${acc_tuile_cell_y}
+  width: ${acc_tuile_l}
+  height: ${acc_tuile_h}
+  styles: style_transparent
+  scrollbar_mode: "OFF"
+  widgets:
+    # Corps Sombre
+    - obj:
+        y: ${acc_h_carte_y}
+        width: ${acc_tuile_l}
+        height: ${acc_h_carte_h}
+        styles: style_meteo_card_page
+        scrollbar_mode: "OFF"
+        on_long_press:
+          - lambda: 'if (!ui_appui_glisse() && meteo_tuile_libre(id(btn_h${idx}_action))) id(tab5_ecran_ouvrir).execute((int) Ecran::METEO);'
+        widgets:
+          - label: { id: "h${idx}_icon_layer1", text: "", hidden: true, align: CENTER, y: 0, text_font: font_meteo_card }
+          - label: { id: "h${idx}_icon_layer2", text: "", hidden: true, align: CENTER, y: 0, text_font: font_meteo_card }
+          - button:
+              id: "btn_h${idx}_action"
+              align: CENTER
+              y: 0
+              width: ${acc_t_bouton_l}
+              height: ${acc_t_bouton_h}
+              hidden: true
+              styles: style_invisible
+              on_short_click:
+                - lambda: 'tuile_appui(${tuile}, false);'
+              on_long_press:
+                - lambda: 'tuile_appui(${tuile}, true);'
+
+    # Onglet Titre
+    - obj:
+        align: TOP_MID
+        y: ${acc_t_onglet_y}
+        width: ${acc_t_onglet_l}
+        height: ${acc_t_onglet_h}
+        border_width: 0
+        styles: style_meteo_card_page
+        scrollbar_mode: "OFF"
+        widgets:
+          - label:
+              id: h${idx}_time
+              text: "--:--"
+              align: CENTER
+              text_font: roboto_32_b
+    # Épaules de l'appareil de la tuile, de part et d'autre de l'onglet titre (comme les
+    # tuiles journalières) : icône à gauche, ampoule ou flèche du volet à droite.
+    - label: { id: "icon_card_h${idx}_g", text: "\U000F0335", hidden: true, align: TOP_LEFT, x: "${acc_t_epaule_x}", y: "${acc_t_epaule_y}", text_font: mdi_font_32, styles: style_text_dim }
+    - label: { id: "icon_card_h${idx}_d", text: "\U000F0335", hidden: true, align: TOP_RIGHT, x: "-${acc_t_epaule_x}", y: "${acc_t_epaule_y}", text_font: mdi_font_32, styles: style_text_dim }
+    # Onglet Température & Pluie. 210 px : pictogramme (x 5) + « 0.5mm » (101 px, x 34)
+    # + « -12° » (61 px) en Roboto 32 gras ; à 140, la pluie recouvrait la température
+    # (rendu hors tablette, 27/09/2026).
+    - obj:
+        align: BOTTOM_MID
+        y: 0
+        width: ${acc_h_bas_l}
+        height: ${acc_t_bas_h}
+        border_width: 0
+        styles: style_meteo_card_page
+        scrollbar_mode: "OFF"
+        widgets:
+          - label:
+              id: h${idx}_p_icon
+              text: "\U000F0596"
+              align: BOTTOM_LEFT
+              x: ${acc_h_goutte_x}
+              y: ${acc_h_goutte_y}
+              text_font: mdi_font_26
+              styles: style_text_temp_min
+          - label:
+              id: h${idx}_prob
+              text: "-- %"
+              align: BOTTOM_LEFT
+              x: ${acc_h_pluie_x}
+              y: ${acc_t_texte_y}
+              text_font: roboto_32_b
+              styles: style_text_temp_min
+          - label:
+              id: h${idx}_temp
+              text: "-- °"
+              align: BOTTOM_RIGHT
+              x: ${acc_h_temp_x}
+              y: ${acc_t_texte_y}
+              text_font: roboto_32_b
+              styles: style_text_temp_max

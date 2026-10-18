@@ -1,0 +1,58 @@
+# ═══════════════════════════════════════════════════════
+# [AI-CONTEXT] Barre de titre de popup — cadre modal v4 (ADR-0009).
+# UN SEUL include produit tout le chrome d'en-tête : icône + titre à gauche,
+# croix de fermeture à droite. Remplace modal_header_brand + modal_close_btn.
+#
+# Geometry (identique pour TOUS les popups, ne pas surcharger côté appelant) :
+#   conteneur pleine largeur, hauteur ${modal_hdr_h} = 4 (haut) + 44 (ligne) + 4
+#   → le corps du popup commence à y = ${modal_body_y} = ${modal_hdr_h} + 20 px
+#   d'air (tab5-ui-tokens.yaml) : cet écart de 20 px est VOULU (respiration
+#   titre/corps). Garder body_y >= hdr_h, sinon le corps passe sous la barre.
+# L'alignement vertical est fait par LVGL (LEFT_MID / RIGHT_MID) : plus aucun
+# `y:` recopié popup par popup, donc plus de dérive possible.
+#
+# Boutons d'options d'en-tête (nav mois du calendrier, "Aujourd'hui") : ESPHome
+# ne permet pas d'injecter un sous-arbre de widgets via vars — ils restent des
+# FRÈRES de cet include, en `y: 4, height: 44` (4 + 44/2 = 26 = 52/2 → même axe).
+#
+# vars : icon (glyphe MDI, présent dans mdi_font_32), icon_style (style de rôle
+#        style_text_*, tab5-styles.yaml : la couleur suit le thème),
+#        title, title_id (id LVGL du label titre — obligatoire même si jamais
+#        mis à jour, contrainte ESPHome), close_btn_id, et pour fermer :
+#        popup_id (id du popup : animate_popup_close(id(popup_id)), le cas courant,
+#        08/10/2026, audit YML-15) OU close_lambda (corps C++ une ligne, sans
+#        guillemets simples — substitué dans lambda: '...'), quand la fermeture fait
+#        plus (sous-fenêtre, script, clim). close_lambda l'emporte s'il est donné.
+# NOTE : labels en style bloc (pas flow) car ${icon_style} non quotable en flow.
+# ═══════════════════════════════════════════════════════
+obj:
+  align: TOP_MID
+  y: 0
+  width: 100%
+  height: ${modal_hdr_h}
+  styles: style_transparent
+  scrollable: false
+  widgets:
+    - label:
+        text: "${icon}"
+        align: LEFT_MID
+        x: 10
+        text_font: mdi_font_32
+        styles: ${icon_style}
+    - label:
+        id: ${title_id}
+        text: "${title}"
+        align: LEFT_MID
+        x: 52
+        styles: style_police_titre  # police d'affichage du thème
+    - button:
+        id: ${close_btn_id}
+        align: RIGHT_MID
+        x: -10
+        width: 80
+        height: 44
+        styles: style_clim_btn
+        on_short_click:
+          - lambda: '${ close_lambda | default("animate_popup_close(id(" ~ (popup_id | default("")) ~ "));") }'
+        widgets:
+          - label: { text: "\U000F0156", align: CENTER, text_font: mdi_font_32 }

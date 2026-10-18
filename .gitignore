@@ -1,0 +1,20 @@
+# Environnements et builds ESPHome / PlatformIO
+.esphome/
+.pioenvs/
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+
+# Secrets et clés de signature OTA
+secrets.yaml
+*.pem
+*.key
+
+# Binaires et journaux de compilation
+*.bin
+*.elf
+*.log
+capture-*.log
+build/
+dist/

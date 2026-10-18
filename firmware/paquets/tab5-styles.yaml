@@ -1,0 +1,1257 @@
+# [AI-CONTEXT]
+# @file tab5-styles.yaml
+# @role Styles LVGL partagés (verre, styles de rôle, thème des widgets), polices, et
+#       couleurs des jeux.
+# @ai_instruction Aucune couleur de l'interface dans ce fichier : elles vivent dans la
+#       palette C++ (`Palette`, Tab5/socle/tab5_tokens.h ; thèmes : ADR-0029). Un style lit la
+#       palette active par une lambda (`!lambda 'return lv_color_hex(UIColor.X);'`), et un
+#       widget de l'interface prend sa couleur par un style de rôle
+#       (`styles: style_text_dim`), jamais par une couleur posée sur lui
+#       (tools/check_tab5_code_rules.py, règle 8).
+# =============================================================================
+# THÈME — "Dark Mode Slate" (Glassmorphism), valeurs : PALETTE_SOMBRE
+# -----------------------------------------------------------------------------
+# Base ardoise (Tailwind Slate) + accents HSL vibrants (cyan / violet / emeraude).
+# L'effet "verre depoli" est simule sur ESP32-P4 (pas de backdrop-blur materiel) :
+#   - surfaces OPAQUES depuis le 01/10/2026 (verre plein, choix d'Axel après l'essai :
+#     « c'était plus joli », et 14 à 32 ms de moins à l'ouverture des popups) ;
+#     le tableau de bord garde son verre pré-mélangé (essai D7, même rendu qu'à 58 %)
+#   - degrade vertical (haut clair -> bas sombre) = reflet de verre
+#   - liseré fin lumineux (border_opa) = arête de verre
+#   - ombre portee douce = profondeur / flottement
+# =============================================================================
+# Couleurs des JEUX et du sélecteur arcade seulement : ils restent sombres, avec leurs
+# palettes locales (ADR-0014, ADR-0029). Les couleurs de l'interface ont quitté cette
+# section le 04/10/2026 (lot 1 des thèmes) : un `color:` ESPHome est figé à la
+# compilation (ESPHome écrit lv_color_make(r, g, b) dans main.cpp), un thème ne pourrait
+# pas le changer.
+color:
+  # --- Jeu « Fil d'Or » (marble_game) : miroir des tokens Marble::Pal::* ---
+  # Seuls les 3 fonds des conteneurs vivent ici ; toutes les autres couleurs du
+  # jeu sont posees en C++ (marble_game.cpp) et n'ont donc pas de token YAML.
+  - id: color_marble_void
+    hex: "080C14"          # fond hors terrain (miroir Marble::Pal::VOID)
+  - id: color_marble_floor
+    hex: "111A28"          # sol jouable (miroir Marble::Pal::FLOOR)
+  - id: color_marble_hud
+    hex: "0C1220"          # bandeau HUD (miroir Marble::Pal::HUD_BG)
+  # --- Jeu « Arcanoïde » (arkanoid_game) : miroir des tokens Arkanoid::Pal::* ---
+  # Seuls les 3 fonds des conteneurs vivent ici ; toutes les autres couleurs du
+  # jeu sont posées en C++ (arkanoid_game.cpp) et n'ont donc pas de token YAML.
+  - id: color_arkanoid_void
+    hex: "0A0A0F"          # fond hors terrain (miroir Arkanoid::Pal::VOID)
+  - id: color_arkanoid_floor
+    hex: "111118"          # sol jouable (miroir Arkanoid::Pal::FLOOR)
+  - id: color_arkanoid_hud
+    hex: "0D0D14"          # bandeau HUD (miroir Arkanoid::Pal::HUD_BG)
+  # --- Jeu « Trial Poursuite » (trivia_game) ---------------------------------
+  # trivia_game.yaml référençait ces 3 tokens sans qu'ils existent : la
+  # compilation ESPHome échouait sur « Couldn't find ID 'color_trivia_void' ».
+  # Contrairement aux 3 jeux ci-dessus, trivia_game.cpp ne pose PAS les fonds de
+  # ses conteneurs en C++ — ils doivent donc bien vivre ici.
+  # Teintes accordées à la carte Trivia du sélecteur arcade (accent
+  # color_arcade_trivia_accent, plus bas).
+  - id: color_trivia_void
+    hex: "100A16"          # fond hors plateau
+  - id: color_trivia_floor
+    hex: "1A1028"          # plateau de jeu
+  - id: color_trivia_hud
+    hex: "150E22"          # bandeau HUD
+  # --- Jeu « Neon Apron » (pinball_game) : miroir des tokens Pinball::Pal::* ---
+  # Comme Marble et Arcanoïde : seuls les fonds des 4 conteneurs vivent ici, tout
+  # le reste de la palette est posé en C++ (pinball_game.cpp).
+  - id: color_pinball_void
+    hex: "05070E"          # fond hors table (miroir Pinball::Pal::VOID)
+  - id: color_pinball_felt
+    hex: "121C2E"          # haut du sol (miroir Pinball::Pal::FELT_HI)
+  - id: color_pinball_hud
+    hex: "080C16"          # fronton / DMD (miroir Pinball::Pal::HUD_BG)
+  # --- Sélecteur arcade (ui_components/game_selector.yaml) --------------------
+  # Chaque carte = un fond (`_card`) + un accent (`_accent`, bordure et icône).
+  # Les fonds des cartes Fil d'Or, Arcanoïde et Trial Poursuite réutilisent le
+  # sol du jeu (color_marble_floor / color_arkanoid_floor / color_trivia_floor)
+  # et les titres le texte de la palette sombre (PALETTE_SOMBRE.TEXT_SOFT, posé
+  # sur le label : le sélecteur reste sombre) ; tout le reste vit ici — plus aucun hex en dur dans
+  # le sélecteur (audit du 06/09/2026, §4.1 point 11).
+  - id: color_arcade_bg
+    hex: "080810"          # fond de la page arcade
+  - id: color_arcade_title
+    hex: "FFDD22"          # icône + titre « ARCADE »
+  - id: color_arcade_subtitle
+    hex: "8595AD"          # sous-titre et descriptions des cartes (même gris que le rôle CONSOLE_LABEL de la palette sombre)
+  - id: color_arcade_footer
+    hex: "4A5568"          # pied de page
+  - id: color_arcade_close_bg
+    hex: "222233"          # croix de fermeture : fond
+  - id: color_arcade_close_border
+    hex: "445566"          # croix de fermeture : bordure
+  - id: color_arcade_close_icon
+    hex: "AABBCC"          # croix de fermeture : glyphe
+  - id: color_arcade_marble_accent
+    hex: "E8B44A"
+  - id: color_arcade_arkanoid_accent
+    hex: "44DDDD"
+  - id: color_arcade_pinball_card
+    hex: "0D1420"
+  - id: color_arcade_pinball_accent
+    hex: "35E6FF"
+  - id: color_arcade_lode_card
+    hex: "0A0A12"
+  - id: color_arcade_lode_accent
+    hex: "FFC61A"
+  - id: color_arcade_go_card
+    hex: "1A150E"
+  - id: color_arcade_go_accent
+    hex: "C4A574"
+  - id: color_arcade_trivia_accent
+    hex: "FF9800"
+  - id: color_arcade_draughts_card
+    hex: "241810"
+  - id: color_arcade_draughts_accent
+    hex: "D4B896"
+  - id: color_arcade_chess_card
+    hex: "121A16"
+  - id: color_arcade_chess_accent
+    hex: "8FBF6A"
+
+# =============================================================================
+# FONTS — polices embarquées en flash
+# =============================================================================
+# Un glyphe absent de la police s'affiche VIDE, sans erreur de compilation.
+# tools/check_tab5_code_rules.py (pytest) le vérifie : règle 6 pour la date,
+# règle 7 pour les icônes MDI (chaque icône affichée est dans la police de son
+# widget, et chaque glyphe déclaré est affiché quelque part — pas de poids mort).
+font:
+  # Roboto 700 : fichier figé du dépôt (Tab5/fonts/, licence dans Tab5/fonts/OFL.txt),
+  # celui que Google Fonts servait à ESPHome par gfonts://Roboto@700 jusqu'au 08/10/2026
+  # (audit du 07/10, DO-15 : une nouvelle version chez Google changeait le firmware sans
+  # un mot). Empreinte vérifiée par tests/test_polices_themes.py.
+  # Texte libre (poussé par HA, réponses de l'assistant) : tout Latin-1 plus les
+  # ajouts de Windows-1252 (€ … ’ « » œ Œ — –), İ ō ř des questions de Trial
+  # Poursuite (İnönü, Jōmon Sugi, Dvořák ; 27/09/2026) et Ğ ğ ı Ş ş du turc (avec İ et
+  # le Latin-1 : ç ö ü â î û ; 02/10/2026), 224 glyphes. Déclarée une fois
+  # ici (ancre &latin1), reprise par *latin1 dans roboto_45_b et roboto_22.
+  # Grosses polices (titres 32, horloge 130, températures 55, date 45 ; ADR-0061) : leur
+  # taille suit la carte, `carte_police_echelle` de Tab5/paquets/geometrie-<carte>.yaml
+  # (1 sur le Tab5 : les tailles de l'id ; 0,82 sur la Waveshare 7B), arrondie. L'id garde
+  # la taille du Tab5. tests/commun.py (taille_police) lit la même expression.
+  - file: "Tab5/fonts/roboto_700.ttf"
+    id: roboto_32_b
+    size: ${ (32 * (carte_police_echelle | float)) | round | int }
+    bpp: 2   # 4 niveaux de lissage au lieu de 16 (essai D8, 26/09/2026) :
+             # bitmaps divisés par deux, validé à l'œil par Axel
+    glyphs: &latin1 ' !"#$%&''()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\]^_`abcdefghijklmnopqrstuvwxyz{|}~€‚ƒ„…†‡ˆ‰Š‹ŒŽ‘’“”•–—˜™š›œžŸ¡¢£¤¥¦§¨©ª«¬®¯°±²³´µ¶·¸¹º»¼½¾¿ÀÁÂÃÄÅÆÇÈÉÊËÌÍÎÏÐÑÒÓÔÕÖ×ØÙÚÛÜÝÞßàáâãäåæçèéêëìíîïðñòóôõö÷øùúûüýþÿİōřĞğıŞş'
+  # Chiffres de l'horloge et de l'écran de sonnerie : rien d'autre.
+  - file: "Tab5/fonts/roboto_700.ttf"
+    id: roboto_130_b
+    size: ${ (130 * (carte_police_echelle | float)) | round | int }
+    bpp: 2   # 4 niveaux de lissage au lieu de 16 (essai D8, 26/09/2026) :
+             # bitmaps divisés par deux, validé à l'œil par Axel
+    glyphs: '0123456789:'
+  # Heure du réveil, consigne et température du popup clim, score du flipper. Le
+  # tiret sert au « -- » de la consigne quand elle est inconnue (au boot, jusqu'au
+  # 1er push de HA, ou consigne absente) : sans lui, le label restait vide. La
+  # consigne de l'accueil est dans la police de la date depuis le 05/10/2026.
+  # Le « — » : tokens par seconde inconnus du popup Serveur IA (ADR-0059), jamais un
+  # zéro inventé. Le « + » : net du mois de la page Bilan du popup Énergie (« +23.4 »,
+  # ADR-0062).
+  - file: "Tab5/fonts/roboto_700.ttf"
+    id: roboto_55_b
+    size: ${ (55 * (carte_police_echelle | float)) | round | int }
+    bpp: 4
+    glyphs: '+-0123456789: °C.%—'
+  - file: "Tab5/fonts/roboto_700.ttf"
+    id: roboto_45_b
+    size: ${ (45 * (carte_police_echelle | float)) | round | int }
+    bpp: 2   # 4 niveaux de lissage au lieu de 16 (essai D8, 26/09/2026) :
+             # bitmaps divisés par deux, validé à l'œil par Axel
+    glyphs: *latin1
+  # La date sous l'horloge (lbl_date) est en roboto_45_b depuis l'essai D8 du
+  # 26/09/2026 : la police fine roboto_45, qui ne servait qu'à elle, est retirée
+  # (−12,4 Ko). La règle 6 de tools/check_tab5_code_rules.py vérifie toujours que
+  # la police de lbl_date couvre ses jours, mois et chiffres.
+
+  - file: "Tab5/fonts/roboto_700.ttf"
+    id: roboto_22
+    size: 22
+    bpp: 4
+    glyphs: *latin1
+
+  # Plus de police MONOSPACE depuis l'essai D8 du 26/09/2026 (−83 Ko) : à la
+  # demande d'Axel, l'assistant vocal réutilise roboto_32_b (A-) et la police de la
+  # date du thème (A+, roboto_45_b en Roboto), le Go et le flipper roboto_22. Les tableaux Markdown des réponses ne sont
+  # plus alignés qu'approximativement (format_assist_markdown, tab5_assist.cpp).
+
+  # --- Icônes Material Design (Tab5/fonts/materialdesignicons-webfont.ttf) ----------
+  # Une icône par ligne, nom relevé dans le TTF. bpp 1 : aplats nets, 4× moins
+  # lourds qu'en bpp 4. Ajouter une icône à l'écran = l'ajouter à la police de son
+  # widget ; la retirer de l'écran = la retirer d'ici (règle 7, sinon pytest échoue).
+
+  # 70 px — icônes des 5 interrupteurs (switches_card.yaml), cloche de la sonnerie
+  # (alarm_ring_overlay.yaml) et, depuis le 05/10/2026, boutons de l'accueil (Domo,
+  # Discu, HA, Réglages, Arcade : icône seule, encre de 58 px dans 90 px de haut) et rangée des
+  # pots, à la même taille. S'appelait mdi_font_80 (l'id mentait), renommé le 08/09/2026.
+  # Taille de la carte (carte_police_echelle, lot 3 du portage 1024×600) : ses boutons et
+  # ses tuiles sont ramenés à son écran, l'icône aussi (70 sur le Tab5).
+  - file: "Tab5/fonts/materialdesignicons-webfont.ttf"
+    id: mdi_font_70
+    size: ${ (70 * (carte_police_echelle | float)) | round | int }
+    bpp: 1
+    glyphs:
+      # Bouton du haut dont le tap est changé dans le blueprint (09/10/2026, lot A) : le
+      # glyphe de ce que fait le tap (code_glyphe, tab5_zones.cpp) ; ceux de la palette
+      # (flower, home, solar-power) sont plus bas.
+      - "\U000F0020"  # alarm (aussi tap : Réveil)
+      - "\U000F012A"  # chart-line (tap : Suivi, ADR-0054)
+      - "\U000F018D"  # console (tap : Console système)
+      - "\U000F0290"  # fridge (tap : Froid, ADR-0055)
+      - "\U000F0297"  # gamepad-variant (bouton du haut : Arcade, 06/10/2026)
+      - "\U000F02E3"  # bed
+      - "\U000F02E5"  # pot
+      - "\U000F036C"  # microphone (tap : Assistant vocal)
+      - "\U000F0379"  # monitor
+      - "\U000F03E4"  # pause (lecture / pause du popup Musique, ADR-0050)
+      - "\U000F040A"  # play (lecture / pause du popup Musique, ADR-0050)
+      - "\U000F048B"  # server (tap : Serveur IA, ADR-0059)
+      - "\U000F0493"  # cog (bouton du haut : Réglages, 06/10/2026)
+      - "\U000F04B9"  # sofa
+      - "\U000F050A"  # microphone-message (tap des heures : ligne suivante du panneau Ok Nabu, lot 3)
+      - "\U000F056C"  # view-carousel (tap : contenu suivant de la zone à gauche de l'horloge, ADR-0051)
+      - "\U000F0595"  # weather-partly-cloudy (tap : Météo)
+      - "\U000F06A9"  # robot
+      - "\U000F0717"  # snowflake (tap : Climatisation)
+      - "\U000F0729"  # view-sequential (tap : ligne suivante sous l'horloge)
+      - "\U000F075A"  # music (tap : Musique, ADR-0050)
+      - "\U000F07AE"  # cctv (tap : Caméras, ADR-0049)
+      - "\U000F07C0"  # desktop-classic (tap : télécommande TV)
+      - "\U000F07C5"  # ear-hearing (tap : Ok Nabu)
+      - "\U000F07D0"  # home-assistant
+      - "\U000F09F1"  # flower-tulip
+      - "\U000F0D08"  # flower-poppy
+      - "\U000F0E17"  # calendar-month (tap : Calendrier)
+      - "\U000F0E66"  # sprout
+      - "\U000F0E81"  # bell-alert-outline (tap : Alertes)
+      - "\U000F1051"  # led-strip-variant
+      - "\U000F111E"  # window-shutter-open
+      - "\U000F1382"  # compass-rose (tap : roue de navigation, ADR-0042)
+      - "\U000F14C9"  # plus-minus-variant (tap : appareil suivant de la tuile − / +)
+      # >>> tuiles
+      # Palette des tuiles de pièce (ADR-0023), sauf les glyphes déjà listés au-dessus.
+      - "\U000F001B"  # air-conditioner (clim)
+      - "\U000F0079"  # battery (batterie)
+      - "\U000F00AC"  # blinds (store)
+      - "\U000F0130"  # checkbox-blank-circle-outline (etat)
+      - "\U000F0133"  # checkbox-marked-circle (etat)
+      - "\U000F0210"  # fan (ventilateur)
+      - "\U000F0241"  # flash (energie)
+      - "\U000F024A"  # flower (plante)
+      - "\U000F0299"  # gate (portail)
+      - "\U000F029A"  # gauge (mesure)
+      - "\U000F02B4"  # controller (console)
+      - "\U000F02B5"  # controller-off (console)
+      - "\U000F02DC"  # home (presence)
+      - "\U000F0335"  # lightbulb (ampoule)
+      - "\U000F033E"  # lock (serrure)
+      - "\U000F033F"  # lock-open (serrure)
+      - "\U000F0392"  # smoke-detector (fumee)
+      - "\U000F03D8"  # palette (scene)
+      - "\U000F0438"  # radiator (radiateur)
+      - "\U000F04C3"  # speaker (enceinte)
+      - "\U000F04C4"  # speaker-off (enceinte)
+      - "\U000F04F6"  # tablet (tablette)
+      - "\U000F0502"  # television (tv)
+      - "\U000F050F"  # thermometer (thermometre)
+      - "\U000F058E"  # water-percent (humidite)
+      - "\U000F05AE"  # window-closed (fenetre)
+      - "\U000F05B1"  # window-open (fenetre)
+      - "\U000F06A1"  # home-outline (presence)
+      - "\U000F06A5"  # power-plug (prise)
+      - "\U000F06A6"  # power-plug-off (prise)
+      - "\U000F06B5"  # lamp (lampe)
+      - "\U000F06D9"  # garage (garage)
+      - "\U000F06DA"  # garage-open (garage)
+      - "\U000F06E8"  # lightbulb-on (ampoule)
+      - "\U000F070D"  # robot-vacuum (aspirateur)
+      - "\U000F072A"  # washing-machine (lave_linge)
+      - "\U000F0769"  # ceiling-light (plafonnier)
+      - "\U000F07E4"  # molecule-co2 (co2)
+      - "\U000F081B"  # door-closed (porte)
+      - "\U000F081C"  # door-open (porte)
+      - "\U000F081D"  # fan-off (ventilateur)
+      - "\U000F083B"  # television-off (tv)
+      - "\U000F08DD"  # floor-lamp (lampadaire)
+      - "\U000F091C"  # wall-sconce (applique)
+      - "\U000F095F"  # desk-lamp (lampe_bureau)
+      - "\U000F0A72"  # solar-power (solaire)
+      - "\U000F0AAC"  # dishwasher (lave_vaisselle)
+      - "\U000F0AD8"  # radiator-off (radiateur)
+      - "\U000F0BC2"  # script-text (script)
+      - "\U000F0D91"  # motion-sensor (mouvement)
+      - "\U000F0F92"  # water-boiler (chauffe_eau)
+      - "\U000F1011"  # blinds-open (store)
+      - "\U000F1060"  # sprinkler-variant (arrosage)
+      - "\U000F1067"  # valve-closed (vanne)
+      - "\U000F1068"  # valve-open (vanne)
+      - "\U000F1099"  # air-humidifier (humidificateur)
+      - "\U000F109F"  # coffee-maker (cafetiere)
+      - "\U000F111C"  # window-shutter (volet)
+      - "\U000F116A"  # gate-open (portail)
+      - "\U000F11B4"  # water-boiler-off (chauffe_eau)
+      - "\U000F11B9"  # dishwasher-off (lave_vaisselle)
+      - "\U000F11BD"  # washing-machine-off (lave_linge)
+      - "\U000F12A8"  # gesture-tap-button (bouton)
+      - "\U000F12BA"  # string-lights (guirlande)
+      - "\U000F12BB"  # string-lights-off (guirlande)
+      - "\U000F1402"  # pump (pompe)
+      - "\U000F1435"  # motion-sensor-off (mouvement)
+      - "\U000F1466"  # air-humidifier-off (humidificateur)
+      - "\U000F1793"  # chandelier (lustre)
+      - "\U000F1846"  # curtains (rideau)
+      - "\U000F1847"  # curtains-closed (rideau)
+      - "\U000F192E"  # smoke-detector-alert (fumee)
+      - "\U000F1A25"  # toggle-switch-variant (interrupteur)
+      - "\U000F1A26"  # toggle-switch-variant-off (interrupteur)
+      - "\U000F1B20"  # desk-lamp-on (lampe_bureau)
+      - "\U000F1B22"  # pump-off (pompe)
+      - "\U000F1C01"  # robot-vacuum-off (aspirateur)
+      # <<< tuiles
+
+  # 60 px — vigilances Météo-France (alerte_slot_*, parse_and_update_vigilance) et
+  # goutte / flocon de la prévision de pluie (icon_rain_predict). Taille de la carte, comme
+  # mdi_font_70 (lot 3 du portage) : la tuile des prévisions est ramenée à son écran.
+  - file: "Tab5/fonts/materialdesignicons-webfont.ttf"
+    id: mdi_font_alert
+    size: ${ (60 * (carte_police_echelle | float)) | round | int }
+    bpp: 1
+    glyphs:
+      - "\U000F0593"  # weather-lightning
+      - "\U000F0596"  # weather-pouring
+      - "\U000F0597"  # weather-rainy
+      - "\U000F0598"  # weather-snowy
+      - "\U000F059D"  # weather-windy
+      - "\U000F078D"  # waves
+      - "\U000F0E01"  # thermometer-alert
+      - "\U000F0EFA"  # home-flood
+      - "\U000F0F29"  # snowflake-alert
+      - "\U000F0F36"  # weather-snowy-heavy
+      - "\U000F1A48"  # landslide (avalanches : MDI n'a pas d'icône avalanche)
+      - "\U000F0591"  # weather-fog (brouillard, alertes MeteoAlarm — lot 4c)
+      - "\U000F0238"  # fire (feux de forêt, alertes MeteoAlarm — lot 4c)
+
+  # 45 px — boutons des popups : télécommande TV, clim (modes, préréglages), lumière,
+  # réveil, en-tête de la sélection des consoles, cartes du popup Énergie ; icône de la
+  # tuile − / + de l'accueil ; moyeu de la roue de navigation (rose des vents, ADR-0042).
+  # Les températures de l'accueil sont en mdi_font_temp depuis le 18/10/2026.
+  - file: "Tab5/fonts/materialdesignicons-webfont.ttf"
+    id: mdi_font_45
+    size: 45
+    bpp: 1
+    glyphs:
+      - "\U000F0020"  # alarm
+      - "\U000F0021"  # alarm-check
+      - "\U000F0023"  # alarm-off
+      - "\U000F0045"  # arrow-down
+      - "\U000F004D"  # arrow-left
+      - "\U000F0054"  # arrow-right
+      - "\U000F005D"  # arrow-up
+      - "\U000F0210"  # fan
+      - "\U000F0211"  # fast-forward (télécommande d'un boîtier : avancer, ADR-0056)
+      - "\U000F0238"  # fire
+      - "\U000F024A"  # flower
+      - "\U000F0290"  # fridge (popup Froid : carte d'un réfrigérateur, ADR-0055)
+      - "\U000F0297"  # gamepad-variant
+      - "\U000F02DC"  # home
+      - "\U000F02E3"  # bed
+      - "\U000F032A"  # leaf
+      - "\U000F035C"  # menu
+      - "\U000F0374"  # minus
+      - "\U000F0379"  # monitor
+      - "\U000F03E4"  # pause
+      - "\U000F040A"  # play
+      - "\U000F040E"  # play-pause (télécommande d'un boîtier : lecture / pause, ADR-0056)
+      - "\U000F0415"  # plus
+      - "\U000F0425"  # power
+      - "\U000F0456"  # repeat (popup Musique : répéter tout)
+      - "\U000F0457"  # repeat-off (popup Musique : sans répétition)
+      - "\U000F0458"  # repeat-once (popup Musique : répéter le morceau)
+      - "\U000F045F"  # rewind (télécommande d'un boîtier : reculer, ADR-0056)
+      - "\U000F049D"  # shuffle (popup Musique : aléatoire)
+      - "\U000F049E"  # shuffle-disabled (popup Musique : dans l'ordre)
+      - "\U000F04AD"  # skip-next (popup Musique : suivant)
+      - "\U000F04AE"  # skip-previous (popup Musique : précédent)
+      - "\U000F04B9"  # sofa
+      - "\U000F04DB"  # stop
+      - "\U000F054C"  # undo
+      - "\U000F057E"  # volume-high (télécommande d'un boîtier : à la place de Muet, ADR-0056)
+      - "\U000F0581"  # volume-off
+      - "\U000F058E"  # water-percent
+      - "\U000F0598"  # weather-snowy (carte Neige du popup Météo)
+      - "\U000F0599"  # weather-sunny (carte Indice UV du popup Météo)
+      - "\U000F059D"  # weather-windy
+      - "\U000F068E"  # alarm-snooze
+      - "\U000F0717"  # snowflake
+      - "\U000F0D3E"  # transmission-tower (popup Énergie, réseau sans échange)
+      - "\U000F0E79"  # arrow-up-down
+      - "\U000F1051"  # led-strip-variant
+      - "\U000F1382"  # compass-rose (moyeu de la roue de navigation, ADR-0042)
+      - "\U000F146D"  # fan-chevron-down
+      - "\U000F14DE"  # rocket-launch
+      - "\U000F17DE"  # battery-arrow-down (popup Énergie, décharge)
+      - "\U000F17E0"  # battery-arrow-up (popup Énergie, charge)
+      - "\U000F1903"  # home-lightning-bolt (popup Énergie, maison)
+      - "\U000F192C"  # transmission-tower-export (popup Énergie, vente)
+      - "\U000F192D"  # transmission-tower-import (popup Énergie, achat)
+      # >>> tuiles
+      # Palette des tuiles de pièce (ADR-0023), sauf les glyphes déjà listés au-dessus.
+      - "\U000F001B"  # air-conditioner (clim)
+      - "\U000F0079"  # battery (batterie)
+      - "\U000F00AC"  # blinds (store)
+      - "\U000F0130"  # checkbox-blank-circle-outline (etat)
+      - "\U000F0133"  # checkbox-marked-circle (etat)
+      - "\U000F0241"  # flash (energie)
+      - "\U000F0299"  # gate (portail)
+      - "\U000F029A"  # gauge (mesure)
+      - "\U000F02B4"  # controller (console)
+      - "\U000F02B5"  # controller-off (console)
+      - "\U000F0335"  # lightbulb (ampoule)
+      - "\U000F033E"  # lock (serrure)
+      - "\U000F033F"  # lock-open (serrure)
+      - "\U000F0392"  # smoke-detector (fumee)
+      - "\U000F03D8"  # palette (scene)
+      - "\U000F0438"  # radiator (radiateur)
+      - "\U000F04C3"  # speaker (enceinte)
+      - "\U000F04C4"  # speaker-off (enceinte)
+      - "\U000F04F6"  # tablet (tablette)
+      - "\U000F0502"  # television (tv)
+      - "\U000F050F"  # thermometer (thermometre)
+      - "\U000F05AE"  # window-closed (fenetre)
+      - "\U000F05B1"  # window-open (fenetre)
+      - "\U000F06A1"  # home-outline (presence)
+      - "\U000F06A5"  # power-plug (prise)
+      - "\U000F06A6"  # power-plug-off (prise)
+      - "\U000F06B5"  # lamp (lampe)
+      - "\U000F06D9"  # garage (garage)
+      - "\U000F06DA"  # garage-open (garage)
+      - "\U000F06E8"  # lightbulb-on (ampoule)
+      - "\U000F070D"  # robot-vacuum (aspirateur)
+      - "\U000F072A"  # washing-machine (lave_linge)
+      - "\U000F0769"  # ceiling-light (plafonnier)
+      - "\U000F07E4"  # molecule-co2 (co2)
+      - "\U000F081B"  # door-closed (porte)
+      - "\U000F081C"  # door-open (porte)
+      - "\U000F081D"  # fan-off (ventilateur)
+      - "\U000F083B"  # television-off (tv)
+      - "\U000F08DD"  # floor-lamp (lampadaire)
+      - "\U000F091C"  # wall-sconce (applique)
+      - "\U000F095F"  # desk-lamp (lampe_bureau)
+      - "\U000F0A72"  # solar-power (solaire)
+      - "\U000F0AAC"  # dishwasher (lave_vaisselle)
+      - "\U000F0AD8"  # radiator-off (radiateur)
+      - "\U000F0BC2"  # script-text (script)
+      - "\U000F0D91"  # motion-sensor (mouvement)
+      - "\U000F0F92"  # water-boiler (chauffe_eau)
+      - "\U000F1011"  # blinds-open (store)
+      - "\U000F1060"  # sprinkler-variant (arrosage)
+      - "\U000F1067"  # valve-closed (vanne)
+      - "\U000F1068"  # valve-open (vanne)
+      - "\U000F1099"  # air-humidifier (humidificateur)
+      - "\U000F109F"  # coffee-maker (cafetiere)
+      - "\U000F111C"  # window-shutter (volet)
+      - "\U000F111E"  # window-shutter-open (volet)
+      - "\U000F116A"  # gate-open (portail)
+      - "\U000F11B4"  # water-boiler-off (chauffe_eau)
+      - "\U000F11B9"  # dishwasher-off (lave_vaisselle)
+      - "\U000F11BD"  # washing-machine-off (lave_linge)
+      - "\U000F12A8"  # gesture-tap-button (bouton)
+      - "\U000F12BA"  # string-lights (guirlande)
+      - "\U000F12BB"  # string-lights-off (guirlande)
+      - "\U000F1402"  # pump (pompe)
+      - "\U000F1435"  # motion-sensor-off (mouvement)
+      - "\U000F1466"  # air-humidifier-off (humidificateur)
+      - "\U000F1793"  # chandelier (lustre)
+      - "\U000F1846"  # curtains (rideau)
+      - "\U000F1847"  # curtains-closed (rideau)
+      - "\U000F192E"  # smoke-detector-alert (fumee)
+      - "\U000F1A25"  # toggle-switch-variant (interrupteur)
+      - "\U000F1A26"  # toggle-switch-variant-off (interrupteur)
+      - "\U000F1B20"  # desk-lamp-on (lampe_bureau)
+      - "\U000F1B22"  # pump-off (pompe)
+      - "\U000F1C01"  # robot-vacuum-off (aspirateur)
+      # <<< tuiles
+
+  # Températures de l'accueil (climate_card.yaml : salon, serre ; en mode HA, thermomètre et
+  # goutte de la pièce, ADR-0040 ; view-carousel sans seconde température, ADR-0051) et − / +
+  # de la tuile en dessous : 45 et 56 px sur le Tab5, à la taille de la carte ailleurs
+  # (carte_police_echelle, 18/10/2026, demande d'Axel), comme la valeur qu'elles bordent.
+  # Sur la 7B, une icône restée à 45 px laissait 4 px entre le « ° » du salon et l'icône de
+  # la serre, et le − de 56 px remplissait presque son bouton de 40.
+  - file: "Tab5/fonts/materialdesignicons-webfont.ttf"
+    id: mdi_font_temp
+    size: ${ (45 * (carte_police_echelle | float)) | round | int }
+    bpp: 1
+    glyphs:
+      - "\U000F002D"  # greenhouse
+      - "\U000F04B9"  # sofa
+      - "\U000F050F"  # thermometer (pièce du mode HA)
+      - "\U000F056C"  # view-carousel (seconde température absente : son tap change la zone à gauche de l'horloge, ADR-0051)
+      - "\U000F058E"  # water-percent (humidité de la pièce du mode HA)
+  - file: "Tab5/fonts/materialdesignicons-webfont.ttf"
+    id: mdi_font_pas
+    size: ${ (56 * (carte_police_echelle | float)) | round | int }
+    bpp: 1
+    glyphs:
+      - "\U000F0374"  # minus
+      - "\U000F0415"  # plus
+
+  # 56 px — cartes du popup plantes, boutons -/+ de la clim, tuiles des consoles. (Le
+  # « power » du bouton On / Off du popup lumière est parti avec lui le 09/10/2026, ADR-0046.)
+  - file: "Tab5/fonts/materialdesignicons-webfont.ttf"
+    id: mdi_font_56
+    size: 56
+    bpp: 1
+    glyphs:
+      - "\U000F013A"  # checkerboard
+      - "\U000F024A"  # flower
+      - "\U000F02E5"  # pot
+      - "\U000F0374"  # minus
+      - "\U000F0415"  # plus
+      - "\U000F0570"  # view-grid
+      - "\U000F05DD"  # bullseye
+      - "\U000F0857"  # chess-king
+      - "\U000F09F1"  # flower-tulip
+      - "\U000F0B38"  # circle-multiple
+      - "\U000F0D08"  # flower-poppy
+      - "\U000F0E66"  # sprout
+      - "\U000F0E95"  # circle-double
+      - "\U000F134A"  # head-question
+      - "\U000F15A2"  # ladder
+
+  # 32 px — barre de titre des modales (ADR-0009), tuiles du dashboard, détail du jour
+  # du calendrier, titres de rangée du réveil, Console système.
+  - file: "Tab5/fonts/materialdesignicons-webfont.ttf"
+    id: mdi_font_32
+    size: 32
+    bpp: 1
+    glyphs:
+      - "\U000F0020"  # alarm
+      - "\U000F0030"  # amplifier (popup Musique : pastille d'un ampli)
+      - "\U000F0045"  # arrow-down
+      - "\U000F005D"  # arrow-up
+      - "\U000F0079"  # battery
+      # Ligne « Batterie » de la console système (06/10/2026) : les glyphes de
+      # batterie_glyphe() (tab5_zones.cpp), comme l'icône du bandeau ; la prise plus bas.
+      - "\U000F0083"  # battery-alert
+      - "\U000F0084"  # battery-charging
+      - "\U000F0091"  # battery-unknown
+      - "\U000F0290"  # fridge (titre du popup Froid, ADR-0055)
+      - "\U000F048B"  # server (titre du popup Serveur IA, ADR-0059)
+      - "\U000F075A"  # music (titre du popup Musique, ADR-0050)
+      - "\U000F12A1"  # battery-low
+      - "\U000F12A2"  # battery-medium
+      - "\U000F12A6"  # battery-charging-high (Réglages : mode de charge)
+      - "\U000F00D6"  # briefcase
+      - "\U000F00DF"  # brightness-6 (Réglages : luminosité)
+      - "\U000F00EB"  # cake-variant
+      - "\U000F00F0"  # calendar-clock
+      - "\U000F012A"  # chart-line (titre du popup Suivi, ADR-0054)
+      - "\U000F01EA"  # eject (popup Serveur IA : décharger le modèle, ADR-0060)
+      - "\U000F0709"  # restart (popup Serveur IA : redémarrer le service, ADR-0060)
+      - "\U000F0141"  # chevron-left
+      - "\U000F0142"  # chevron-right
+      - "\U000F0150"  # clock-outline
+      - "\U000F0156"  # close
+      - "\U000F0241"  # flash
+      - "\U000F024A"  # flower
+      - "\U000F02E3"  # bed
+      - "\U000F032A"  # leaf (Réglages : économie d'énergie)
+      - "\U000F0335"  # lightbulb
+      - "\U000F035B"  # memory (popup Serveur IA : RAM, ADR-0059)
+      - "\U000F036C"  # microphone
+      - "\U000F0379"  # monitor
+      - "\U000F0387"  # music-note
+      - "\U000F03E4"  # pause
+      - "\U000F0425"  # power
+      - "\U000F0450"  # refresh
+      - "\U000F0474"  # school
+      - "\U000F0493"  # cog (Réglages : en-tête)
+      - "\U000F04C5"  # speedometer (popup Serveur IA : tokens par seconde, ADR-0059)
+      - "\U000F0533"  # trending-down (baisse d'un capteur suivi, ADR-0054)
+      - "\U000F0534"  # trending-neutral (capteur suivi stable)
+      - "\U000F0535"  # trending-up (hausse d'un capteur suivi)
+      - "\U000F04B9"  # sofa
+      - "\U000F050E"  # theme-light-dark (Réglages : clair ou sombre)
+      - "\U000F050F"  # thermometer
+      - "\U000F057E"  # volume-high
+      - "\U000F0581"  # volume-off
+      - "\U000F0594"  # weather-night (Réglages : nuit du mode Auto)
+      - "\U000F0595"  # weather-partly-cloudy (titre du popup Météo, ADR-0043)
+      - "\U000F05A9"  # wifi
+      - "\U000F05CA"  # translate (Réglages : langue)
+      - "\U000F05CB"  # account-voice
+      - "\U000F06E8"  # lightbulb-on
+      - "\U000F0717"  # snowflake
+      - "\U000F0741"  # gesture-tap (Réglages : rallumer d'une tape)
+      - "\U000F075D"  # volume-plus (Réveil : volume progressif)
+      - "\U000F07AE"  # cctv (titre du popup Caméras, ADR-0049)
+      - "\U000F07C0"  # desktop-classic
+      - "\U000F07D0"  # home-assistant
+      - "\U000F08AE"  # expansion-card (popup Serveur IA : VRAM, ADR-0059)
+      - "\U000F093A"  # animation-play (Réglages : animations)
+      - "\U000F09D3"  # calendar-star
+      - "\U000F0D90"  # monitor-off (Réglages : extinction auto)
+      - "\U000F0E17"  # calendar-month
+      - "\U000F0E81"  # bell-alert-outline (popup Alertes : en-tête)
+      - "\U000F1051"  # led-strip-variant
+      - "\U000F1056"  # party-popper
+      - "\U000F111C"  # window-shutter
+      - "\U000F111E"  # window-shutter-open
+      # >>> tuiles
+      # Palette des tuiles de pièce (ADR-0023), sauf les glyphes déjà listés au-dessus.
+      - "\U000F001B"  # air-conditioner (clim)
+      - "\U000F00AC"  # blinds (store)
+      - "\U000F0130"  # checkbox-blank-circle-outline (etat)
+      - "\U000F0133"  # checkbox-marked-circle (etat)
+      - "\U000F0210"  # fan (ventilateur)
+      - "\U000F0299"  # gate (portail)
+      - "\U000F029A"  # gauge (mesure)
+      - "\U000F02B4"  # controller (console)
+      - "\U000F02B5"  # controller-off (console)
+      - "\U000F02DC"  # home (presence)
+      - "\U000F033E"  # lock (serrure)
+      - "\U000F033F"  # lock-open (serrure)
+      - "\U000F0392"  # smoke-detector (fumee)
+      - "\U000F03D8"  # palette (scene)
+      - "\U000F0438"  # radiator (radiateur)
+      - "\U000F04C3"  # speaker (enceinte)
+      - "\U000F04C4"  # speaker-off (enceinte)
+      - "\U000F04F6"  # tablet (tablette)
+      - "\U000F0502"  # television (tv)
+      - "\U000F058E"  # water-percent (humidite)
+      - "\U000F05AE"  # window-closed (fenetre)
+      - "\U000F05B1"  # window-open (fenetre)
+      - "\U000F06A1"  # home-outline (presence)
+      - "\U000F06A5"  # power-plug (prise)
+      - "\U000F06A6"  # power-plug-off (prise)
+      - "\U000F06B5"  # lamp (lampe)
+      - "\U000F06D9"  # garage (garage)
+      - "\U000F06DA"  # garage-open (garage)
+      - "\U000F070D"  # robot-vacuum (aspirateur)
+      - "\U000F072A"  # washing-machine (lave_linge)
+      - "\U000F0769"  # ceiling-light (plafonnier)
+      - "\U000F07E4"  # molecule-co2 (co2)
+      - "\U000F081B"  # door-closed (porte)
+      - "\U000F081C"  # door-open (porte)
+      - "\U000F081D"  # fan-off (ventilateur)
+      - "\U000F083B"  # television-off (tv)
+      - "\U000F08DD"  # floor-lamp (lampadaire)
+      - "\U000F091C"  # wall-sconce (applique)
+      - "\U000F095F"  # desk-lamp (lampe_bureau)
+      - "\U000F0A72"  # solar-power (solaire)
+      - "\U000F0AAC"  # dishwasher (lave_vaisselle)
+      - "\U000F0AD8"  # radiator-off (radiateur)
+      - "\U000F0BC2"  # script-text (script)
+      - "\U000F0D91"  # motion-sensor (mouvement)
+      - "\U000F0F92"  # water-boiler (chauffe_eau)
+      - "\U000F1011"  # blinds-open (store)
+      - "\U000F1060"  # sprinkler-variant (arrosage)
+      - "\U000F1067"  # valve-closed (vanne)
+      - "\U000F1068"  # valve-open (vanne)
+      - "\U000F1099"  # air-humidifier (humidificateur)
+      - "\U000F109F"  # coffee-maker (cafetiere)
+      - "\U000F116A"  # gate-open (portail)
+      - "\U000F11B4"  # water-boiler-off (chauffe_eau)
+      - "\U000F11B9"  # dishwasher-off (lave_vaisselle)
+      - "\U000F11BD"  # washing-machine-off (lave_linge)
+      - "\U000F12A8"  # gesture-tap-button (bouton)
+      - "\U000F12BA"  # string-lights (guirlande)
+      - "\U000F12BB"  # string-lights-off (guirlande)
+      - "\U000F1402"  # pump (pompe)
+      - "\U000F1435"  # motion-sensor-off (mouvement)
+      - "\U000F1466"  # air-humidifier-off (humidificateur)
+      - "\U000F1793"  # chandelier (lustre)
+      - "\U000F1846"  # curtains (rideau)
+      - "\U000F1847"  # curtains-closed (rideau)
+      - "\U000F192E"  # smoke-detector-alert (fumee)
+      - "\U000F1A25"  # toggle-switch-variant (interrupteur)
+      - "\U000F1A26"  # toggle-switch-variant-off (interrupteur)
+      - "\U000F1B20"  # desk-lamp-on (lampe_bureau)
+      - "\U000F1B22"  # pump-off (pompe)
+      - "\U000F1C01"  # robot-vacuum-off (aspirateur)
+      # <<< tuiles
+
+  # 120 px — grand micro de l'assistant, note de la pochette absente du popup Musique.
+  - file: "Tab5/fonts/materialdesignicons-webfont.ttf"
+    id: mdi_font_120
+    size: 120
+    bpp: 1
+    glyphs:
+      - "\U000F036C"  # microphone
+      - "\U000F075A"  # music (popup Musique : pochette absente)
+
+  # 26 px — barre d'état (réveil, Wi-Fi, PC, production solaire, batterie de la
+  # tablette, ou une prise sans batterie), pluie des cartes horaires, et mini icônes des
+  # trois boutons du haut : l'écran qu'ouvre leur appui long (mini_glyphe, tab5_zones.cpp,
+  # 07/10/2026 : le glyphe de l'en-tête de chaque popup).
+  - file: "Tab5/fonts/materialdesignicons-webfont.ttf"
+    id: mdi_font_26
+    size: 26
+    bpp: 1
+    glyphs:
+      - "\U000F0020"  # alarm (aussi mini icône : Réveil)
+      - "\U000F0023"  # alarm-off
+      - "\U000F0079"  # battery (batterie de la tablette, > 80 %)
+      - "\U000F0083"  # battery-alert (< 20 %)
+      - "\U000F0084"  # battery-charging (en charge)
+      - "\U000F0091"  # battery-unknown (pas de mesure)
+      - "\U000F012A"  # chart-line (mini icône : Suivi, ADR-0054)
+      - "\U000F011E"  # cellphone-basic
+      - "\U000F018D"  # console (mini icône : Console système)
+      - "\U000F01D8"  # dots-horizontal (« ⋯ » d'une ligne du popup Maison, ADR-0037)
+      - "\U000F024A"  # flower (mini icône : Plantes)
+      - "\U000F0290"  # fridge (mini icône : Froid, ADR-0055)
+      - "\U000F0297"  # gamepad-variant (mini icône : Arcade)
+      - "\U000F02DC"  # home (mini icône : Maison)
+      - "\U000F0335"  # lightbulb (mini icône : Lumières, ADR-0042)
+      - "\U000F036C"  # microphone (mini icône : Assistant vocal)
+      - "\U000F0379"  # monitor
+      - "\U000F048B"  # server (mini icône : Serveur IA, ADR-0059)
+      - "\U000F0493"  # cog (mini icône : Réglages)
+      - "\U000F050A"  # microphone-message (tap des heures : ligne suivante du panneau Ok Nabu, lot 3)
+      - "\U000F050F"  # thermometer (mini icône : Température)
+      - "\U000F056C"  # view-carousel (mini icône : contenu suivant de la zone à gauche de l'horloge, ADR-0051)
+      - "\U000F0595"  # weather-partly-cloudy (mini icône : Météo)
+      - "\U000F0596"  # weather-pouring
+      - "\U000F05A9"  # wifi
+      - "\U000F05CE"  # clock-alert-outline (prévisions périmées, au-dessus des tuiles)
+      - "\U000F06A5"  # power-plug (tablette sans batterie détectée)
+      - "\U000F0717"  # snowflake (mini icône : Climatisation)
+      - "\U000F0729"  # view-sequential (mini icône : ligne suivante sous l'horloge, 09/10/2026)
+      - "\U000F075A"  # music (mini icône : Musique, ADR-0050)
+      - "\U000F07AE"  # cctv (mini icône : Caméras, ADR-0049)
+      - "\U000F07C0"  # desktop-classic (mini icône de la manette : télécommande TV, 06/10/2026)
+      - "\U000F07C5"  # ear-hearing (mini icône : Ok Nabu)
+      - "\U000F07D0"  # home-assistant (mini icône : mode Domo)
+      - "\U000F0A72"  # solar-power (mini icône : Énergie choisie dans le blueprint)
+      - "\U000F0D9B"  # solar-panel (production solaire du bandeau, tous les paliers ; mini icône « auto » de « HA »)
+      - "\U000F0E17"  # calendar-month (mini icône : Calendrier)
+      - "\U000F0E81"  # bell-alert-outline (mini icône : Alertes)
+      - "\U000F111E"  # window-shutter-open (mini icône : Volet)
+      - "\U000F11B1"  # fridge-alert (coin de l'horloge : un appareil au niveau grave, ADR-0055)
+      - "\U000F12A1"  # battery-low (20 à 40 %)
+      - "\U000F12A2"  # battery-medium (41 à 80 %)
+      - "\U000F1382"  # compass-rose (mini icône : roue de navigation)
+      - "\U000F14C9"  # plus-minus-variant (mini icône : appareil suivant de la tuile − / +)
+
+  # 36 px — popup Assistant vocal (assistant_popup.yaml).
+  - file: "Tab5/fonts/materialdesignicons-webfont.ttf"
+    id: mdi_assist_36
+    size: 36
+    bpp: 1
+    glyphs:
+      - "\U000F021A"  # text-box
+      - "\U000F021F"  # file-image
+      - "\U000F0361"  # message
+      - "\U000F036C"  # microphone
+      - "\U000F04DB"  # stop
+      - "\U000F04EB"  # table
+      - "\U000F057E"  # volume-high
+      - "\U000F0581"  # volume-off
+      - "\U000F062E"  # tune
+      - "\U000F06A9"  # robot
+      - "\U000F07D0"  # home-assistant
+
+  # 36 px — roue d'actions rapides (ADR-0036, ui_components/roue_bouton.yaml et
+  # roue_choix.yaml) : icônes posées par glyphe_roue() (tab5_roue.cpp, MDI_CODE_TARGETS de
+  # la règle 7). Celles de la clim sont celles de son popup ; celles de la roue de
+  # navigation (ADR-0042) disent ses familles et ses écrans.
+  - file: "Tab5/fonts/materialdesignicons-webfont.ttf"
+    id: mdi_font_36
+    size: 36
+    bpp: 1
+    glyphs:
+      - "\U000F001B"  # air-conditioner (navigation : Clims)
+      - "\U000F0020"  # alarm (navigation : Réveil)
+      - "\U000F00DF"  # brightness-6 (Luminosité)
+      - "\U000F00F0"  # calendar-clock (navigation : Agenda)
+      - "\U000F018D"  # console (navigation : Système)
+      - "\U000F0210"  # fan
+      - "\U000F0238"  # fire
+      - "\U000F024A"  # flower (navigation : Plantes)
+      - "\U000F0290"  # fridge (navigation : Froid, ADR-0055)
+      - "\U000F0297"  # gamepad-variant (navigation : Jeux)
+      - "\U000F02DC"  # home (lien « Maison »)
+      - "\U000F032A"  # leaf (Éco)
+      - "\U000F036C"  # microphone (navigation : Assistant)
+      - "\U000F0393"  # thermostat (Mode)
+      - "\U000F03D8"  # palette (Couleurs)
+      - "\U000F0425"  # power
+      - "\U000F048B"  # server (navigation : Serveur IA, ADR-0059)
+      - "\U000F0493"  # cog (navigation : Réglages)
+      - "\U000F04DB"  # stop
+      - "\U000F04F6"  # tablet (navigation : Tablette)
+      - "\U000F050F"  # thermometer (Consigne)
+      - "\U000F058E"  # water-percent
+      - "\U000F0595"  # weather-partly-cloudy (navigation : Météo, ADR-0043)
+      - "\U000F059D"  # weather-windy (Brise)
+      - "\U000F05A8"  # white-balance-sunny (Blancs)
+      - "\U000F06E8"  # lightbulb-on (Allumer)
+      - "\U000F0717"  # snowflake
+      - "\U000F072E"  # arrow-down-bold
+      - "\U000F0737"  # arrow-up-bold
+      - "\U000F075A"  # music (navigation : Musique, l'icône du popup, ADR-0050)
+      - "\U000F07AE"  # cctv (navigation : Caméras, ADR-0049)
+      - "\U000F07C0"  # desktop-classic (navigation : TV, l'icône de la télécommande)
+      - "\U000F0821"  # floor-plan (navigation : Pièces)
+      - "\U000F084F"  # arrow-expand-vertical (Position)
+      - "\U000F0A72"  # solar-power (navigation : Énergie)
+      - "\U000F0AE2"  # star-four-points (Options)
+      - "\U000F0E17"  # calendar-month (navigation : Calendrier)
+      - "\U000F0E79"  # arrow-up-down (Oscillation)
+      - "\U000F0E81"  # bell-alert-outline (navigation : Alertes, ADR-0042)
+      - "\U000F111E"  # window-shutter-open (navigation : Volets)
+      - "\U000F1252"  # home-lightbulb-outline (navigation : Appareils)
+      - "\U000F1253"  # lightbulb-group (navigation : Lumières)
+      - "\U000F146D"  # fan-chevron-down (Silence)
+      - "\U000F14DE"  # rocket-launch (Boost)
+      - "\U000F1542"  # tune-variant (lien « Détails » de la roue)
+
+  # Icônes météo des tuiles seulement (120 px, calque 2 réduit à 80 px). Les
+  # tailles 270 et 190 px (font_meteo_main / _small) sont retirées le 25/09/2026 :
+  # la grosse icône centrale n'existe plus, ~196 Ko de flash jamais affichés.
+  # Les 10 glyphes = les 10 constantes de MeteoIcon (tab5_custom.h) ; F003 et F004,
+  # présents dans le TTF mais jamais affichés, sont retirés le 25/09/2026.
+  - file: "Tab5/fonts/IconeMeteo.ttf"
+    id: font_meteo_card
+    size: 120
+    bpp: 2   # 4 niveaux de lissage au lieu de 16 (essai D8, 26/09/2026) :
+             # bitmaps divisés par deux, validé à l'œil par Axel
+    glyphs: "\U0000F000\U0000F001\U0000F002\U0000F005\U0000F006\U0000F007\U0000F00B\U0000F00E\U0000F00F\U0000F015"
+
+  # Calque 2 réduit (lune / soleil derrière le nuage de « partlycloudy »).
+  - file: "Tab5/fonts/IconeMeteo.ttf"
+    id: font_meteo_card_small
+    size: 80
+    bpp: 2   # 4 niveaux de lissage au lieu de 16 (essai D8, 26/09/2026) :
+             # bitmaps divisés par deux, validé à l'œil par Axel
+    glyphs: "\U0000F00B\U0000F00F"
+
+  # Les mêmes icônes à 40 % (48 et 32 px), popup Météo (ADR-0043) : heures et jours
+  # (update_meteo_icon(…, 40), tab5_meteo.cpp). Mêmes 10 glyphes, même calque 2 réduit.
+  - file: "Tab5/fonts/IconeMeteo.ttf"
+    id: font_meteo_48
+    size: 48
+    bpp: 2
+    glyphs: "\U0000F000\U0000F001\U0000F002\U0000F005\U0000F006\U0000F007\U0000F00B\U0000F00E\U0000F00F\U0000F015"
+  - file: "Tab5/fonts/IconeMeteo.ttf"
+    id: font_meteo_32
+    size: 32
+    bpp: 2
+    glyphs: "\U0000F00B\U0000F00F"
+
+  # --- Jeu « Roi Noir » : pièces d'échecs -----------------------------------
+  # ChessPieces.ttf est un SOUS-ENSEMBLE (12 glyphes, 16 Ko) taillé dans DejaVu
+  # Sans, exactement comme IconeMeteo.ttf : on n'embarque que ce qu'on affiche.
+  # U+2654–2659 = pièces « blanches » (contour creux), U+265A–265F = « noires »
+  # (silhouette pleine). chess_game.cpp superpose les deux pour dessiner une
+  # pièce blanche (corps ivoire + contour sombre) — d'où les 12 glyphes et pas 6.
+  # size 80 : encre 72×60 px dans une case de 84 (calibré, aucun débordement).
+  # bpp 4 obligatoire : en bpp 1 les contours fins (couronne, crinière) crénellent.
+  - file: "Tab5/fonts/ChessPieces.ttf"
+    id: chess_pieces_80
+    size: 80
+    bpp: 4
+    # Échappements plutôt que glyphes littéraux : même convention que les polices
+    # MDI ci-dessus, et aucune dépendance à l'encodage de l'éditeur.
+    glyphs: "\u2654\u2655\u2656\u2657\u2658\u2659\u265A\u265B\u265C\u265D\u265E\u265F"
+
+# =============================================================================
+# LVGL — Glassmorphism "Slate"
+# =============================================================================
+lvgl:
+  # [AI-CONTEXT] `id` explicite = seul moyen d'atteindre le LvglComponent depuis
+  # une lambda (`id(tab5_lvgl)`), donc de changer la rotation À CHAUD. C'est ce
+  # dont « Neon Apron » (pinball_game.cpp) a besoin pour passer le dashboard en
+  # portrait 720×1280 le temps d'une partie, puis restaurer le paysage.
+  # NE PAS retirer cet id, et NE PAS changer `rotation: 270` : c'est l'état de
+  # repos du dashboard, celui que Pinball::close() rétablit.
+  # Depuis l'ADR-0061, la valeur vient de la carte (`carte_rotation`,
+  # Tab5/paquets/geometrie-<carte>.yaml) : 270 sur le Tab5 (dalle portrait), 180 sur la
+  # Waveshare 7B (dalle paysage montée à l'envers) ; le flipper revient à la même
+  # (kRotationRepos).
+  id: tab5_lvgl
+  # [AI-WARNING] `rotation:` doit rester présent ici même si le jeu la surcharge
+  # à chaud : ESPHome ne compile le support de rotation (rotation_type_ =
+  # ROTATION_SOFTWARE, buffer de rotation + client PPA) QUE si la clé existe
+  # dans la config. Sans elle, LvglComponent::set_rotation() se contente d'un
+  # ESP_LOGW « rotation cannot be changed unless rotation was enabled during
+  # setup » et le flipper resterait en paysage (vérifié dans
+  # esphome/components/lvgl/lvgl_esphome.cpp, LvglComponent::set_rotation).
+  rotation: ${carte_rotation}
+  color_depth: 16
+  byte_order: little_endian
+  buffer_size: 100%
+  # Fond de toutes les pages (jeux compris, que leurs conteneurs recouvrent). Évalué à
+  # la création des pages, dans main(), avant que le select « Thème » ne restaure le
+  # thème : toutes naissent dans la palette sombre par défaut, et tab5_theme_repeindre
+  # (tab5-themes.yaml) ne repeint que page_main — les jeux restent sombres (ADR-0029).
+  bg_color: !lambda 'return lv_color_hex(UIColor.BG);'
+  # Police par défaut (audit ressources du 26/09/2026, lot 6, D5) : aucun texte de
+  # l'interface n'utilisait la montserrat_14 d'origine (tous les labels posent leur
+  # police, mk_label() des jeux aussi) — elle n'est plus embarquée.
+  default_font: roboto_22
+  # Thème ESPHome : styles partagés posés sur CHAQUE widget du type à sa création,
+  # avant ses `styles:` et ses propriétés locales, qui gardent donc la main.
+  # - label : le blanc et la police courants de l'interface. Un label n'écrit plus
+  #   `styles: style_text_*` / `text_font: roboto_22` que s'il s'en écarte
+  #   (292 réglages locaux retirés des sources).
+  # - button : pas d'ombre. Le thème LVGL par défaut en posait une (3 px, décalée de
+  #   4 px) sous tout bouton qui ne l'annulait pas — voiles des popups, cartes de
+  #   l'arcade, pastilles — recalculée à chaque repeint, sans cache (D1).
+  theme:
+    label:
+      text_font: roboto_22
+      text_color: !lambda 'return lv_color_hex(UIColor.TEXT_SOFT);'
+    button:
+      shadow_width: 0
+  style_definitions:
+    # NB : `scrollbar_mode` n'est PAS une propriété de style : ESPHome l'ignore
+    # sans avertissement dans style_definitions (vérifié dans main.cpp le
+    # 26/09/2026, 6 occurrences retirées). Le poser sur le widget.
+    # Repère de la chronologie du démarrage (10/10/2026, tab5_demarrage.h) : ESPHome crée
+    # les styles dans main(), juste après l'initialisation de LVGL et avant les ~1 800
+    # widgets ; sa lambda, évaluée une fois à ce moment, marque « objets ». Posé sur aucun
+    # widget, il ne change rien à l'écran. Garder ce style EN PREMIER.
+    # [AI-WARNING] (16/10/2026) Sa lambda prépare aussi LVGL avant les widgets
+    # (demarrage_preparer_lvgl, Tab5/ecran/tab5_demarrage.cpp) : taille finale de
+    # l'affichage, vidage des abonnements des labels. ESPHome évalue cette lambda après la
+    # création de l'affichage et avant celle des widgets ; sans cet appel, setup() redevient
+    # quadratique en nombre de labels (~90 % du calcul du démarrage, écran noir plus long).
+    - id: style_repere_demarrage
+      text_letter_space: !lambda |-
+        demarrage_marquer(EtapeDemarrage::OBJETS);
+        demarrage_preparer_lvgl();
+        return 0;
+    # --- Carte meteo / tuiles dashboard ---
+    # ESSAI C 16/07 : même décoration que les boutons Domo (style_clim_btn) —
+    # fond 58%, bordure 1px/35%, radius 18. Couvre horloge, clim, bandeau central,
+    # tuiles météo horaires/jours + page HA. pad/scrollbar conservés (conteneurs).
+    # (Version d'avant l'essai : dans l'historique git du 16/07/2026 — le dossier
+    #  docs/essais_design/ a ete retire du depot.)
+    # Opaque depuis le 01/10/2026 (était à 58 %) : verre plein, voir l'en-tête.
+    - id: style_meteo_card
+      bg_color: !lambda 'return lv_color_hex(UIColor.GLASS_HI);'
+      bg_grad_color: !lambda 'return lv_color_hex(UIColor.GLASS_LO);'
+      bg_grad_dir: VER
+      bg_opa: 100%
+      border_width: 1
+      border_color: !lambda 'return lv_color_hex(UIColor.GLASS_RIM);'
+      border_opa: 35%
+      radius: 18
+      shadow_width: 0
+      outline_width: 0
+      pad_all: 0
+
+    # --- Conteneurs transparents (fonctionnel : inchanges) ---
+    # --- Verre du tableau de bord, pré-mélangé sur la page (essai D7) ---
+    # Rendu identique à style_meteo_card / style_clim_btn posés sur BG,
+    # mais opaque : un repeint du tableau de bord (fermeture d'un popup, swipe)
+    # ne mélange plus ≈ 580 000 px. À n'utiliser QUE sur la page elle-même, jamais
+    # dans un popup ni sur le voile (le fond n'y est pas BG).
+    # Appui : l'effet pressé (tab5_anim.cpp) passe l'opacité à 52 % au lieu de
+    # 30 % sur un fond opaque, pour la même teinte (30 % × 255 / 147).
+    - id: style_meteo_card_page
+      bg_color: !lambda 'return lv_color_hex(UIColor.GLASS_HI_PAGE);'
+      bg_grad_color: !lambda 'return lv_color_hex(UIColor.GLASS_LO_PAGE);'
+      bg_grad_dir: VER
+      bg_opa: 100%
+      border_width: 1
+      border_color: !lambda 'return lv_color_hex(UIColor.GLASS_RIM);'
+      border_opa: 35%
+      radius: 18
+      shadow_width: 0
+      outline_width: 0
+      pad_all: 0
+
+    # --- Cartes de la page qu'un thème peut dessiner à part (thèmes, lot 3) ---
+    # Copies exactes de style_meteo_card_page : un thème qui ne dit rien les voit
+    # identiques aux cartes météo (tools/gen_themes.py leur reporte les `formes:` de
+    # style_meteo_card_page), un thème peut aussi les dessiner à part (`formes:`
+    # de Tab5/themes/<thème>.yaml) : horloge, bandeau central, carte de la clim et les
+    # deux onglets des prévisions des jours. L'horloge et le bandeau lisent la palette
+    # de leur zone (UIHorloge, UIBandeau : égale à UIColor, sauf en mode clair d'un
+    # thème qui garde la zone sombre, `zones_sombres:`).
+    - id: style_horloge_page
+      bg_color: !lambda 'return lv_color_hex(UIHorloge.GLASS_HI_PAGE);'
+      bg_grad_color: !lambda 'return lv_color_hex(UIHorloge.GLASS_LO_PAGE);'
+      bg_grad_dir: VER
+      bg_opa: 100%
+      border_width: 1
+      border_color: !lambda 'return lv_color_hex(UIHorloge.GLASS_RIM);'
+      border_opa: 35%
+      radius: 18
+      shadow_width: 0
+      outline_width: 0
+      pad_all: 0
+    - id: style_bandeau_page
+      bg_color: !lambda 'return lv_color_hex(UIBandeau.GLASS_HI_PAGE);'
+      bg_grad_color: !lambda 'return lv_color_hex(UIBandeau.GLASS_LO_PAGE);'
+      bg_grad_dir: VER
+      bg_opa: 100%
+      border_width: 1
+      border_color: !lambda 'return lv_color_hex(UIBandeau.GLASS_RIM);'
+      border_opa: 35%
+      radius: 18
+      shadow_width: 0
+      outline_width: 0
+      pad_all: 0
+    - id: style_clim_carte_page
+      bg_color: !lambda 'return lv_color_hex(UIColor.GLASS_HI_PAGE);'
+      bg_grad_color: !lambda 'return lv_color_hex(UIColor.GLASS_LO_PAGE);'
+      bg_grad_dir: VER
+      bg_opa: 100%
+      border_width: 1
+      border_color: !lambda 'return lv_color_hex(UIColor.GLASS_RIM);'
+      border_opa: 35%
+      radius: 18
+      shadow_width: 0
+      outline_width: 0
+      pad_all: 0
+    # Onglets des jours (nom du jour, températures) : sans bordure, comme le
+    # `border_width: 0` que leurs gabarits posaient avant ce style.
+    - id: style_onglet_jour_page
+      bg_color: !lambda 'return lv_color_hex(UIColor.GLASS_HI_PAGE);'
+      bg_grad_color: !lambda 'return lv_color_hex(UIColor.GLASS_LO_PAGE);'
+      bg_grad_dir: VER
+      bg_opa: 100%
+      border_width: 0
+      border_color: !lambda 'return lv_color_hex(UIColor.GLASS_RIM);'
+      border_opa: 35%
+      radius: 18
+      shadow_width: 0
+      outline_width: 0
+      pad_all: 0
+    - id: style_onglet_temp_page
+      bg_color: !lambda 'return lv_color_hex(UIColor.GLASS_HI_PAGE);'
+      bg_grad_color: !lambda 'return lv_color_hex(UIColor.GLASS_LO_PAGE);'
+      bg_grad_dir: VER
+      bg_opa: 100%
+      border_width: 0
+      border_color: !lambda 'return lv_color_hex(UIColor.GLASS_RIM);'
+      border_opa: 35%
+      radius: 18
+      shadow_width: 0
+      outline_width: 0
+      pad_all: 0
+
+    - id: style_clim_btn_page
+      bg_color: !lambda 'return lv_color_hex(UIColor.GLASS_HI_PAGE);'
+      bg_grad_color: !lambda 'return lv_color_hex(UIColor.GLASS_LO_PAGE);'
+      bg_grad_dir: VER
+      bg_opa: 100%
+      border_width: 1
+      border_color: !lambda 'return lv_color_hex(UIColor.GLASS_RIM);'
+      border_opa: 35%
+      radius: 18
+      shadow_width: 0
+      outline_width: 0
+
+    - id: style_transparent
+      bg_opa: 0
+      border_width: 0
+      pad_all: 0
+    - id: style_invisible
+      bg_opa: 0
+      border_width: 0
+      shadow_width: 0
+      outline_width: 0
+      pad_all: 0
+
+    # --- Bouton climatisation : pastille de verre ---
+    # Opaque depuis le 01/10/2026 (était à 58 %). L'appui (tab5_anim.cpp) voit un
+    # fond opaque et passe à 52 % au lieu de 30 %.
+    - id: style_clim_btn
+      bg_color: !lambda 'return lv_color_hex(UIColor.GLASS_HI);'
+      bg_grad_color: !lambda 'return lv_color_hex(UIColor.GLASS_LO);'
+      bg_grad_dir: VER
+      bg_opa: 100%
+      border_width: 1
+      border_color: !lambda 'return lv_color_hex(UIColor.GLASS_RIM);'
+      border_opa: 35%
+      radius: 18
+      shadow_width: 0
+      outline_width: 0
+
+    # (style_modal_overlay supprimé le 25/07/2026 : le voile unique est
+    #  ui_components/modal_scrim.yaml, opacité passée en var — ADR-0009.)
+
+    # --- Carte modale "verre" flottante ---
+    # Essai D7 (26/09/2026) : posée sur un voile désormais OPAQUE, elle est
+    # pré-mélangée (même rendu, opaque) — LVGL ne mélange plus 860 000 px à chaque
+    # ouverture. Un popup empilé sur un autre (voile à 60 %) prend
+    # style_modal_card_verre : verre plein, opaque depuis le 01/10/2026 (88 % avant).
+    - id: style_modal_card
+      bg_color: !lambda 'return lv_color_hex(UIColor.GLASS_HI_MODAL);'
+      bg_grad_color: !lambda 'return lv_color_hex(UIColor.GLASS_LO_MODAL);'
+      bg_grad_dir: VER
+      bg_main_stop: 20
+      bg_grad_stop: 245
+      bg_opa: 100%
+      border_width: 2
+      border_color: !lambda 'return lv_color_hex(UIColor.GLASS_RIM);'
+      border_opa: 60%
+      radius: 24
+      shadow_width: 0
+      pad_all: 0
+
+    - id: style_modal_card_verre
+      bg_color: !lambda 'return lv_color_hex(UIColor.GLASS_HI);'
+      bg_grad_color: !lambda 'return lv_color_hex(UIColor.GLASS_LO);'
+      bg_grad_dir: VER
+      bg_main_stop: 20
+      bg_grad_stop: 245
+      bg_opa: 100%
+      border_width: 2
+      border_color: !lambda 'return lv_color_hex(UIColor.GLASS_RIM);'
+      border_opa: 60%
+      radius: 24
+      shadow_width: 0
+      pad_all: 0
+
+    # --- NOUVEAU : carte de verre generique (reutilisable) ---
+    # Opaque depuis le 01/10/2026 (était à 80 %).
+    - id: style_glass_card
+      bg_color: !lambda 'return lv_color_hex(UIColor.GLASS_HI);'
+      bg_grad_color: !lambda 'return lv_color_hex(UIColor.GLASS_LO);'
+      bg_grad_dir: VER
+      bg_main_stop: 25
+      bg_grad_stop: 240
+      bg_opa: 100%
+      border_width: 2
+      border_color: !lambda 'return lv_color_hex(UIColor.GLASS_RIM);'
+      border_opa: 55%
+      radius: 20
+      shadow_width: 0
+      pad_all: 0
+
+    # --- NOUVEAU : pastille / chip d'accent (cyan) ---
+    # Cyan plein depuis le 01/10/2026 (était à 18 %) : « Tester », « Parler », « OK ».
+    - id: style_pill_accent
+      bg_color: !lambda 'return lv_color_hex(UIColor.ACCENT);'
+      bg_opa: 100%
+      border_width: 1
+      border_color: !lambda 'return lv_color_hex(UIColor.ACCENT);'
+      border_opa: 70%
+      radius: 999
+      pad_all: 0
+
+    # --- Styles de rôle (lot 1 des thèmes, 04/10/2026, ADR-0029) ---------------
+    # Une couleur de la palette sur une propriété, et rien d'autre. Un widget de
+    # l'interface les prend par `styles:` au lieu de poser `text_color:` sur lui :
+    # LVGL ne garde qu'UN style partagé par rôle, qu'un thème peut repeindre d'un
+    # coup (tab5_theme_repeindre, Tab5/paquets/tab5-themes.yaml). Nommage : style_<propriété>_<rôle>, avec
+    # dim = TEXT_DIM et soft = TEXT_SOFT ; le reste = le champ de `Palette`.
+    # Dans une liste `styles:`, un style de rôle vient en DERNIER : il l'emporte sur
+    # les styles posés avant lui, comme la couleur locale qu'il remplace.
+    - id: style_text_dim
+      text_color: !lambda 'return lv_color_hex(UIColor.TEXT_DIM);'
+    - id: style_text_soft
+      text_color: !lambda 'return lv_color_hex(UIColor.TEXT_SOFT);'
+    - id: style_text_accent
+      text_color: !lambda 'return lv_color_hex(UIColor.ACCENT);'
+    - id: style_text_accent_alt
+      text_color: !lambda 'return lv_color_hex(UIColor.ACCENT_ALT);'
+    # Texte et icône posés sur l'accent plein (style_pill_accent) : sur un thème clair,
+    # l'encre du texte courant ne se lirait pas sur l'accent foncé.
+    - id: style_text_on_accent
+      text_color: !lambda 'return lv_color_hex(UIColor.TEXT_ON_ACCENT);'
+    - id: style_text_console_label
+      text_color: !lambda 'return lv_color_hex(UIColor.CONSOLE_LABEL);'
+    - id: style_text_console_value
+      text_color: !lambda 'return lv_color_hex(UIColor.CONSOLE_VALUE);'
+    - id: style_text_error
+      text_color: !lambda 'return lv_color_hex(UIColor.ERROR);'
+    - id: style_text_gold
+      text_color: !lambda 'return lv_color_hex(UIColor.GOLD);'
+    - id: style_text_inactive
+      text_color: !lambda 'return lv_color_hex(UIColor.INACTIVE);'
+    - id: style_text_info
+      text_color: !lambda 'return lv_color_hex(UIColor.INFO);'
+    - id: style_text_rain_value
+      text_color: !lambda 'return lv_color_hex(UIColor.RAIN_VALUE);'
+    - id: style_text_success
+      text_color: !lambda 'return lv_color_hex(UIColor.SUCCESS);'
+    - id: style_text_temp_max
+      text_color: !lambda 'return lv_color_hex(UIColor.TEMP_MAX);'
+    - id: style_text_temp_min
+      text_color: !lambda 'return lv_color_hex(UIColor.TEMP_MIN);'
+    - id: style_text_warning
+      text_color: !lambda 'return lv_color_hex(UIColor.WARNING);'
+    - id: style_bg_accent
+      bg_color: !lambda 'return lv_color_hex(UIColor.ACCENT);'
+    - id: style_bg_accent_alt
+      bg_color: !lambda 'return lv_color_hex(UIColor.ACCENT_ALT);'
+    - id: style_bg_arc_track
+      bg_color: !lambda 'return lv_color_hex(UIColor.ARC_TRACK);'
+    - id: style_bg_bar_inactive
+      bg_color: !lambda 'return lv_color_hex(UIColor.BAR_INACTIVE);'
+    - id: style_bg_console_bg
+      bg_color: !lambda 'return lv_color_hex(UIColor.CONSOLE_BG);'
+    - id: style_bg_dim
+      bg_color: !lambda 'return lv_color_hex(UIColor.TEXT_DIM);'
+    - id: style_bg_gold
+      bg_color: !lambda 'return lv_color_hex(UIColor.GOLD);'
+    - id: style_bg_modal_scrim
+      bg_color: !lambda 'return lv_color_hex(UIColor.MODAL_SCRIM);'
+    - id: style_bg_soft
+      bg_color: !lambda 'return lv_color_hex(UIColor.TEXT_SOFT);'
+    - id: style_bg_success
+      bg_color: !lambda 'return lv_color_hex(UIColor.SUCCESS);'
+    - id: style_bg_warm_pink
+      bg_color: !lambda 'return lv_color_hex(UIColor.WARM_PINK);'
+    - id: style_border_accent
+      border_color: !lambda 'return lv_color_hex(UIColor.ACCENT);'
+    - id: style_border_error
+      border_color: !lambda 'return lv_color_hex(UIColor.ERROR);'
+    - id: style_border_glass_rim
+      border_color: !lambda 'return lv_color_hex(UIColor.GLASS_RIM);'
+    - id: style_border_soft
+      border_color: !lambda 'return lv_color_hex(UIColor.TEXT_SOFT);'
+    - id: style_arc_arc_track
+      arc_color: !lambda 'return lv_color_hex(UIColor.ARC_TRACK);'
+    - id: style_arc_info
+      arc_color: !lambda 'return lv_color_hex(UIColor.INFO);'
+    - id: style_arc_warning
+      arc_color: !lambda 'return lv_color_hex(UIColor.WARNING);'
+
+    # --- Zones qu'un thème clair peut garder sombres (thèmes, lot 3) -------------
+    # Le bandeau central et l'horloge : leurs textes lisent UIBandeau / UIHorloge
+    # (Tab5/socle/tab5_tokens.h), égales à UIColor sauf en mode clair d'un thème à
+    # `zones_sombres:`. Même rôle que style_text_* / style_bg_*, dans la zone.
+    - id: style_bandeau_text_soft
+      text_color: !lambda 'return lv_color_hex(UIBandeau.TEXT_SOFT);'
+    - id: style_bandeau_text_dim
+      text_color: !lambda 'return lv_color_hex(UIBandeau.TEXT_DIM);'
+    - id: style_bandeau_text_rain_value
+      text_color: !lambda 'return lv_color_hex(UIBandeau.RAIN_VALUE);'
+    - id: style_bandeau_text_temp_min
+      text_color: !lambda 'return lv_color_hex(UIBandeau.TEMP_MIN);'
+    - id: style_bandeau_bg_bar_inactive
+      bg_color: !lambda 'return lv_color_hex(UIBandeau.BAR_INACTIVE);'
+    - id: style_horloge_text_soft
+      text_color: !lambda 'return lv_color_hex(UIHorloge.TEXT_SOFT);'
+
+    # --- Polices d'affichage (thèmes, lot 3) -----------------------------------
+    # L'heure (rouleaux, « : » et écran de sonnerie), la date sous l'horloge, les
+    # titres (en-tête des popups) : un thème peut changer leur police (`polices:`,
+    # theme_polices() dans tab5_theme.cpp). Ici, celles de l'état compilé ; la
+    # géométrie de l'horloge (y des rouleaux, place du « : ») reste posée sur ses
+    # labels (tab5-lvgl.yaml, clock_roller.yaml). style_police_date sert aussi, depuis
+    # le 05/10/2026 (demande d'Axel), aux textes de 45 px de l'accueil (températures et
+    # consigne de la clim, « Ok Nabu », carte centrale et titres des prévisions) et à
+    # quelques valeurs des popups : une seule police de 45 px à l'écran par thème.
+    - id: style_police_horloge
+      text_font: roboto_130_b
+    - id: style_police_date
+      text_font: roboto_45_b
+    - id: style_police_titre
+      text_font: roboto_32_b

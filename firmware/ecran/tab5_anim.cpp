@@ -1,0 +1,870 @@
+/**
+ * [AI-CONTEXT]
+ * @file tab5_anim.cpp
+ * @role Animations LVGL : transitions de widgets, ouverture/fermeture des popups, swipe
+ *       horizontal, entrée des alertes, fondu de calques ; retour automatique à l'écran
+ *       principal (inactivité, UIIdle) ; rouleau d'icône météo ; horloge à rouleau
+ *       (layout, chiffres) et date ; styles pressed des boutons verre ; popup à voile
+ *       translucide dont la carte se dessine sans ce qu'elle cache (popup_voile_carte,
+ *       17/10/2026 : Musique, détail du jour du calendrier ; découpe pure dans
+ *       Tab5/socle/tab5_decoupe.h).
+ *       Unité de compilation issue de la scission de tab5_custom.cpp (lot (e) de
+ *       l'audit du 06/09/2026, faite le 08/09/2026) : mêmes fonctions, même ordre,
+ *       aucune logique modifiée.
+ * @regle_absolue Seul point de contact avec l'API LVGL, comme avant : les YAML
+ *                n'appellent que des helpers déclarés dans tab5_custom.h. Les
+ *                helpers partagés entre unités sont déclarés dans tab5_internal.h.
+ * @memory_constraint Pas de std::string dans une boucle de parsing : découper un char* en place.
+ *       `split_fields()` (tab5_core.h) garde les champs vides ; `strtok_r` les fusionne.
+ */
+#include "tab5_custom.h"
+#include "tab5_internal.h"
+#include "tab5_registry.h"   // retour automatique : jeux ouverts, fenêtres modales
+#include "lvgl.h"
+#include "lvgl_private.h"  // popup_voile_carte : lv_cover_check_info_t, lv_inv_area, inv_areas (hors de lvgl.h en 9.5)
+#include "tab5_decoupe.h"  // popup_voile_carte : la découpe, partie pure (Tab5/socle/)
+#include "esphome/components/lvgl/lvgl_esphome.h"
+#include <algorithm>
+#include <cmath>
+#include <ctime>
+#include <cstring>
+#include <vector>
+#include <map>
+
+// Callback d'animation d'opacite : signature compatible lv_anim_exec_xcb_t (void*, int32_t).
+// lv_obj_set_style_opa() prend 3 arguments et ne peut donc pas etre castee directement.
+static void anim_opa_cb(void* obj, int32_t v) {
+    lv_obj_set_style_opa((lv_obj_t*)obj, (lv_opa_t)v, LV_PART_MAIN);
+}
+
+// Callback d'animation de position X (glissement horizontal, swipe previsions).
+static void anim_x_cb(void* obj, int32_t v) {
+    lv_obj_set_x((lv_obj_t*)obj, (int32_t)v);
+}
+
+// Callback d'animation de translate_y (rouleaux : horloge, icones meteo ; contenu des
+// panneaux du rotateur central).
+// On anime translate_y et non y : les icones meteo posent deja un offset de
+// base via lv_obj_set_style_translate_y() dans update_meteo_icon(), et les
+// labels de l'horloge sont alignes (align + y). L'offset de base est integre
+// aux bornes de l'animation par l'appelant, ce callback reste donc trivial.
+static void anim_ty_cb(void* obj, int32_t v) {
+    lv_obj_set_style_translate_y((lv_obj_t*)obj, (int32_t)v, LV_PART_MAIN);
+}
+
+// Cache l'objet a la fin de l'animation (fermeture popup : card + scrim).
+// Reinitialise aussi l'opacité et le scale pour un prochain open propre.
+static void anim_hide_ready_cb(lv_anim_t* a) {
+    lv_obj_t* o = (lv_obj_t*)a->var;
+    if (!o) return;
+    lv_obj_add_flag(o, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_set_style_opa(o, LV_OPA_COVER, LV_PART_MAIN);
+    lv_obj_set_style_transform_scale_x(o, 256, LV_PART_MAIN);
+    lv_obj_set_style_transform_scale_y(o, 256, LV_PART_MAIN);
+}
+
+// Cache le layer sortant apres un swipe horizontal et reinitialise sa position X
+// + opacité pour le prochain swipe (sinon il resterait invisible mais pas caché).
+static void anim_swipe_out_ready_cb(lv_anim_t* a) {
+    lv_obj_t* o = (lv_obj_t*)a->var;
+    if (!o) return;
+    lv_obj_add_flag(o, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_set_x(o, 0);
+    lv_obj_set_style_opa(o, LV_OPA_COVER, LV_PART_MAIN);
+}
+
+// Lance une animation LVGL : remplace les blocs lv_anim_init … lv_anim_start de
+// 8-9 lignes (audit du 26/09/2026, lot 7.1). ready = nullptr et delay = 0 sont
+// les valeurs que pose déjà lv_anim_init() (memzero) : les passer laisse le
+// descripteur identique à celui des anciens blocs qui ne les posaient pas.
+// Les trois callbacks de fin restent distincts : ils ne remettent pas à zéro
+// les mêmes propriétés (contenu des panneaux, x des calques, échelle du fondu), et les
+// calques de prévisions sont posés à y = 430 — un y = 0 commun les déplacerait.
+static void start_anim(void* var, int32_t from, int32_t to, uint32_t dur,
+                       lv_anim_path_cb_t path, lv_anim_exec_xcb_t exec,
+                       lv_anim_completed_cb_t ready = nullptr, uint32_t delay = 0) {
+    lv_anim_t a;
+    lv_anim_init(&a);
+    lv_anim_set_var(&a, var);
+    lv_anim_set_values(&a, from, to);
+    lv_anim_set_duration(&a, dur);
+    lv_anim_set_delay(&a, delay);
+    lv_anim_set_path_cb(&a, path);
+    lv_anim_set_exec_cb(&a, exec);
+    lv_anim_set_completed_cb(&a, ready);
+    lv_anim_start(&a);
+}
+
+// Niveau des animations (select « Tab5 Animations », mode économie : economie_decider,
+// tab5_economie.h ; posé par le script tab5_economie_appliquer, ADR-0045). Une animation
+// coupée pose directement son état final, celui que posent ses callbacks de fin. Une
+// animation déjà partie quand le niveau baisse finit normalement.
+static ChoixAnimations g_animations = ChoixAnimations::COMPLETES;
+
+void animations_niveau(ChoixAnimations niveau) {
+    g_animations = niveau;
+}
+
+// La rotation de la carte centrale (et de la rangée sous l'horloge, calée sur elle) :
+// gardée en « Essentielles », la seule animation voulue par Axel (AGENTS.md).
+static bool rotation_animee() { return g_animations != ChoixAnimations::AUCUNE; }
+// Tout le reste (glissements, fondus, alertes, icônes, horloge) : « Complètes » seulement.
+static bool details_animes() { return g_animations == ChoixAnimations::COMPLETES; }
+
+// Contenu d'un panneau du rotateur central : son premier enfant (libellé, ou rangée
+// d'icônes et de barres). Le panneau lui-même fait toute la largeur de la carte, à
+// cause du bouton invisible de 1180 px posé en dernier (tab5-lvgl.yaml, [AI-WARNING]
+// du titre de page) : c'est le contenu qui glisse, pour que LVGL ne redessine que la
+// largeur du texte à chaque image, pas les 1180 px du bandeau (essai du 29/09/2026 ;
+// avant, 6-7 images de 1180 × 86 px à 13-21 ms par rotation).
+static lv_obj_t* contenu_panneau(lv_obj_t* wrap) {
+    return wrap ? lv_obj_get_child(wrap, 0) : nullptr;
+}
+
+// Fin de la sortie : le panneau est masqué, son contenu remis à sa place pour la
+// prochaine entrée.
+static void anim_out_contenu_ready_cb(lv_anim_t* a) {
+    lv_obj_t* c = (lv_obj_t*)a->var;
+    lv_obj_t* wrap = lv_obj_get_parent(c);
+    if (wrap) lv_obj_add_flag(wrap, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_set_style_translate_y(c, 0, LV_PART_MAIN);
+    lv_obj_set_style_opa(c, LV_OPA_COVER, LV_PART_MAIN);
+}
+
+// Transition "verre depoli" du rotateur central : glissement vertical + fondu croise.
+//   - Sortie : descend en accelerant (ease_in) tout en s'effacant.
+//   - Entree : arrive du haut en decelerant (ease_out) tout en apparaissant.
+// Duree/amplitude : UIAnim::PANEL_* (190ms / 28px depuis le 28/07 — etait
+// 450ms / 84px, trop lent pour un rotateur qui tourne toutes les 8s).
+// Pas de transform_scale (trop couteux sur les grands objets).
+// Anime le CONTENU des panneaux (translate_y, qui ne change pas leur taille), pas les
+// panneaux : seuls leur apparition et leur masquage redessinent toute la largeur.
+void transition_widgets(lv_obj_t* out_wrap, lv_obj_t* in_wrap) {
+    if (out_wrap == in_wrap) return;
+
+    if (!rotation_animee()) {
+        // « Aucune » (ou mode économie) : l'état de fin des deux animations, tout de suite.
+        if (out_wrap) {
+            transition_couper(out_wrap);
+            lv_obj_add_flag(out_wrap, LV_OBJ_FLAG_HIDDEN);
+        }
+        if (in_wrap) {
+            transition_couper(in_wrap);
+            lv_obj_remove_flag(in_wrap, LV_OBJ_FLAG_HIDDEN);
+        }
+        return;
+    }
+
+    const uint32_t DUR    = UIAnim::PANEL_DUR;
+    const int32_t  OFFSET = UIAnim::PANEL_OFFSET;
+
+    if (lv_obj_t* c = contenu_panneau(out_wrap)) {
+        start_anim(c, 0, OFFSET, DUR, lv_anim_path_ease_in, anim_ty_cb, anim_out_contenu_ready_cb);
+        start_anim(c, LV_OPA_COVER, LV_OPA_TRANSP, DUR, lv_anim_path_ease_in, anim_opa_cb);
+    } else if (out_wrap) {
+        lv_obj_add_flag(out_wrap, LV_OBJ_FLAG_HIDDEN);
+    }
+
+    if (in_wrap) {
+        if (lv_obj_t* c = contenu_panneau(in_wrap)) {
+            lv_obj_set_style_translate_y(c, -OFFSET, LV_PART_MAIN);
+            lv_obj_set_style_opa(c, LV_OPA_TRANSP, LV_PART_MAIN);
+            start_anim(c, -OFFSET, 0, DUR, lv_anim_path_ease_out, anim_ty_cb);
+            start_anim(c, LV_OPA_TRANSP, LV_OPA_COVER, DUR, lv_anim_path_ease_out, anim_opa_cb);
+        }
+        lv_obj_remove_flag(in_wrap, LV_OBJ_FLAG_HIDDEN);
+    }
+}
+
+// Transition coupée (tap, réponse vocale, synchro) : le contenu revient à sa place,
+// opaque. Seules les animations de la transition sont retirées (pas un éventuel
+// défilement de libellé). Ne touche pas au drapeau HIDDEN du panneau.
+void transition_couper(lv_obj_t* wrap) {
+    lv_obj_t* c = contenu_panneau(wrap);
+    if (!c) return;
+    lv_anim_delete(c, anim_ty_cb);
+    lv_anim_delete(c, anim_opa_cb);
+    lv_obj_set_style_translate_y(c, 0, LV_PART_MAIN);
+    lv_obj_set_style_opa(c, LV_OPA_COVER, LV_PART_MAIN);
+}
+
+// =============================================================================
+// Helpers d'animation LVGL (popups, swipe, alertes) — 1A du plan.
+// Reutilisent les callbacks ci-dessus (anim_opa_cb/anim_x_cb).
+// =============================================================================
+
+// Ouverture d'un popup : affichage instantané (pas de fondu, réactivité
+// maximale) puis passage au premier plan de son parent, pour qu'un popup ouvert
+// après un autre passe devant. Les 8 appelants YAML écrivaient ce premier plan
+// à la suite de l'appel ; il est ici depuis le lot 7 de l'audit du 26/09/2026,
+// qui a aussi retiré le paramètre du voile (jamais fourni : chaque popup porte
+// le sien, modal_scrim.yaml).
+void animate_popup_open(lv_obj_t* card) {
+    if (!card) return;
+    // Un popup qui s'ouvre referme la roue d'actions rapides (ADR-0036, tab5_roue.cpp).
+    roue_actions_fermer();
+    lv_anim_delete(card, anim_opa_cb);
+    ModalRegistry::degarer(card);  // fenêtre fermée garée hors de l'écran (tab5_registry.h)
+    lv_obj_remove_flag(card, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_set_style_opa(card, LV_OPA_COVER, LV_PART_MAIN);
+    lv_obj_move_to_index(card, -1);  // dernier enfant = dessiné par-dessus
+}
+
+// Fermeture d'un popup : masquage instantané.
+void animate_popup_close(lv_obj_t* card) {
+    if (!card) return;
+    lv_anim_delete(card, anim_opa_cb);
+    lv_obj_add_flag(card, LV_OBJ_FLAG_HIDDEN);
+}
+
+// =============================================================================
+// Popup à voile translucide : sa carte dessinée sans ce qu'elle cache (17/10/2026)
+// Musique (voile à 70 %) et détail du jour du calendrier (voile à 60 % sur le calendrier)
+// =============================================================================
+// Un voile opaque couvre tout l'écran : LVGL commence l'image par lui et ne dessine pas le
+// tableau de bord caché (lv_refr_get_top_obj, essai D7 du 26/09/2026). Le voile à 70 % du
+// popup Musique (ADR-0050) ne couvre rien : son ouverture invalide l'écran d'une seule
+// zone, et LVGL redessinait tout le tableau de bord, puis le voile, puis la carte, même
+// sous la carte opaque (110 ms sur la Waveshare 7B contre 37 à 69 pour les autres popups,
+// nuit du 16 au 17/10/2026). LVGL cherche l'objet du dessus zone par zone : il suffit de
+// couper la zone. Au début de chaque image où le popup est ouvert (LV_EVENT_REFR_START),
+// les zones retenues repassent par lv_inv_area ; l'événement LV_EVENT_INVALIDATE_AREA de
+// l'affichage, qui laisse modifier la zone avant qu'elle soit retenue, la réduit à la part
+// que la carte couvre et renvoie le reste en morceaux (decoupe::couper, tab5_decoupe.h).
+// LVGL dessine la première à partir de la carte, comme il le fait déjà pour toute mise à
+// jour à l'intérieur de la carte, et les autres comme avant : aucun pixel ne change. Les
+// morceaux ne se chevauchent pas, et lv_refr_join_area ne fusionne que des zones qui se
+// chevauchent. La coupe s'arrête au début du dessin (LV_EVENT_RENDER_START : LVGL envoie
+// alors LV_EVENT_INVALIDATE_AREA pour arrondir ses bandes, get_max_row) et entre deux images
+// (un popup qui se ferme invalide l'écran avant de se masquer, lv_obj_add_flag : tout le
+// tableau de bord se redessine, une zone entière suffit).
+// Le détail du jour (voile à 60 %) s'empile sur le calendrier : sans la coupe, tout le
+// calendrier se redessinait sous sa carte (28,3 → 14,1 M d'instructions en Zen Sumi, 33,3 →
+// 23,2 en Relief doux, tablette virtuelle 1024 × 600, 17/10/2026). Essayée aussi sur les
+// popups à voile opaque (Climatisation, Énergie, Réveil), la coupe n'y gagne rien en Zen
+// Sumi (−1,6 à +0,3 %) et coûte en Relief doux (+6 à +15 %) : elle n'y épargne que le
+// remplissage du voile sous la carte, et les objets à cheval sur deux morceaux (barre de
+// titre, ombres) se dessinent deux fois. Ne pas l'y étendre sans mesure.
+namespace {
+struct VoileCarte {
+    lv_obj_t* popup = nullptr;
+    lv_obj_t* carte = nullptr;
+};
+VoileCarte s_voiles[2];  // Musique, détail du jour
+int s_nb_voiles = 0;
+decoupe::Zone s_couverte;    // vide hors de la fenêtre REFR_START → RENDER_START d'un popup ouvert
+bool s_voile_coupe = false;  // les morceaux repassent par lv_inv_area : ne pas les recouper
+
+decoupe::Zone zone_de(const lv_area_t& a) { return {a.x1, a.y1, a.x2, a.y2}; }
+
+lv_area_t area_de(const decoupe::Zone& z) {
+    lv_area_t a;
+    a.x1 = z.x1;
+    a.y1 = z.y1;
+    a.x2 = z.x2;
+    a.y2 = z.y2;
+    return a;
+}
+
+// Affiché : ni l'objet ni un de ses parents masqué (le sous-popup du jour garde son drapeau
+// quand le calendrier qui le contient se ferme seul).
+bool affiche(lv_obj_t* o) {
+    for (; o != nullptr; o = lv_obj_get_parent(o)) {
+        if (lv_obj_has_flag(o, LV_OBJ_FLAG_HIDDEN)) return false;
+    }
+    return true;
+}
+
+// Part couverte de la carte du popup à voile ouvert sur l'écran actif (decoupe::couverte,
+// alignée sur le draw_rounding d'ESPHome) ; vide si aucun ne l'est, ou si la carte ne la
+// couvre pas selon LVGL lui-même (LV_EVENT_COVER_CHECK : un thème au fond translucide) — la
+// zone reste alors entière, comme avant.
+decoupe::Zone voile_part_couverte(lv_display_t* d) {
+    for (int i = 0; i < s_nb_voiles; i++) {
+        const VoileCarte& v = s_voiles[i];
+        if (lv_obj_get_screen(v.popup) != lv_display_get_screen_active(d) || !affiche(v.popup))
+            continue;
+        auto* lvgl = static_cast<esphome::lvgl::LvglComponent*>(lv_display_get_user_data(d));
+        const int32_t n = (lvgl != nullptr && lvgl->draw_rounding > 0) ? (int32_t) lvgl->draw_rounding : 1;
+        lv_area_t k;
+        lv_obj_get_coords(v.carte, &k);
+        const decoupe::Zone c = decoupe::couverte(zone_de(k), lv_obj_get_style_radius(v.carte, LV_PART_MAIN), n);
+        if (c.vide()) return {};
+        const lv_area_t ca = area_de(c);
+        lv_cover_check_info_t info;
+        info.res = LV_COVER_RES_COVER;
+        info.area = &ca;
+        lv_obj_send_event(v.carte, LV_EVENT_COVER_CHECK, &info);
+        return info.res == LV_COVER_RES_COVER ? c : decoupe::Zone{};
+    }
+    return {};
+}
+
+// LV_EVENT_INVALIDATE_AREA, dans la fenêtre : la zone qui chevauche la part couverte s'y
+// réduit, le reste repart en morceaux.
+void voile_invalidation(lv_event_t* e) {
+    if (s_voile_coupe || s_couverte.vide()) return;
+    auto* a = static_cast<lv_area_t*>(lv_event_get_param(e));
+    auto* d = static_cast<lv_display_t*>(lv_event_get_user_data(e));
+    if (a == nullptr || d == nullptr) return;
+    decoupe::Zone dans;
+    decoupe::Zone morceaux[4];
+    const int n = decoupe::couper(zone_de(*a), s_couverte, dans, morceaux);
+    if (n < 0) return;
+    s_voile_coupe = true;
+    for (int i = 0; i < n; i++) {
+        const lv_area_t m = area_de(morceaux[i]);
+        lv_inv_area(d, &m);
+    }
+    s_voile_coupe = false;
+    *a = area_de(dans);
+}
+
+// LV_EVENT_REFR_START : le popup est ouvert ou fermé pour cette image. Ouvert : les zones
+// retenues depuis l'image précédente (l'écran entier à l'ouverture) repartent par
+// lv_inv_area, qui les coupe ; la mise en page qui suit passe par la même coupe.
+void voile_debut_image(lv_event_t* e) {
+    auto* d = static_cast<lv_display_t*>(lv_event_get_user_data(e));
+    s_couverte = voile_part_couverte(d);
+    if (s_couverte.vide() || d->inv_p == 0) return;
+    lv_area_t zones[LV_INV_BUF_SIZE];
+    const uint32_t nb = d->inv_p;
+    for (uint32_t i = 0; i < nb; i++) zones[i] = d->inv_areas[i];
+    lv_inv_area(d, nullptr);
+    for (uint32_t i = 0; i < nb; i++) lv_inv_area(d, &zones[i]);
+}
+
+// LV_EVENT_RENDER_START et LV_EVENT_REFR_READY : fin de la fenêtre.
+void voile_fin_fenetre(lv_event_t*) { s_couverte = {}; }
+}  // namespace
+
+void popup_voile_carte(lv_obj_t* popup, lv_obj_t* carte) {
+    if (popup == nullptr || carte == nullptr) return;
+    for (int i = 0; i < s_nb_voiles; i++) {
+        if (s_voiles[i].popup == popup) return;
+    }
+    if (s_nb_voiles >= (int) (sizeof(s_voiles) / sizeof(s_voiles[0]))) return;
+    lv_display_t* d = lv_obj_get_display(popup);
+    if (d == nullptr) return;
+    if (s_nb_voiles == 0) {
+        lv_display_add_event_cb(d, voile_debut_image, LV_EVENT_REFR_START, d);
+        lv_display_add_event_cb(d, voile_invalidation, LV_EVENT_INVALIDATE_AREA, d);
+        lv_display_add_event_cb(d, voile_fin_fenetre, LV_EVENT_RENDER_START, d);
+        lv_display_add_event_cb(d, voile_fin_fenetre, LV_EVENT_REFR_READY, d);
+    }
+    s_voiles[s_nb_voiles].popup = popup;
+    s_voiles[s_nb_voiles].carte = carte;
+    s_nb_voiles++;
+}
+
+// =============================================================================
+// Retour automatique a l'ecran principal (inactivite tactile) — voir UIIdle
+// dans tab5_custom.h pour les delais et le raisonnement.
+// L'horloge d'inactivite est celle de LVGL : l'indev ecrit last_activity_time
+// a chaque lecture "pressed", donc "inactif" veut bien dire "personne n'a
+// touche la dalle" — inutile d'instrumenter les 200 boutons du HMI.
+// =============================================================================
+
+uint32_t ui_idle_ms() {
+    return lv_display_get_inactive_time(nullptr);  // nullptr = display par defaut
+}
+
+void ui_mark_activity() {
+    lv_display_trigger_activity(nullptr);
+}
+
+// Un tick (1 s) du retour automatique : interval de tab5-scripts.yaml, dont l'en-tête
+// donne les délais et leurs raisons (08/10/2026, audit YML-7 : cette logique était dans
+// sa lambda). Ce qui demande un id() (page LVGL, widgets des prévisions) reste au YAML,
+// que la valeur rendue guide.
+RetourAuto retour_auto_tick(bool sur_page_arcade) {
+    // Un jeu ouvert ne se ferme jamais seul (une partie en pause : zéro toucher).
+    if (GameRegistry::any_open()) return RetourAuto::RIEN;
+    const uint32_t idle = ui_idle_ms();
+
+    // Sélecteur arcade (page_arcade) : aucun jeu ouvert, retour au dashboard après le
+    // délai des popups.
+    if (sur_page_arcade) return idle >= UIIdle::POPUP_MS ? RetourAuto::QUITTER_ARCADE : RetourAuto::RIEN;
+
+    // Liste de la tuile − / + (ADR-0033) : une sous-fenêtre, pas un popup ; elle se
+    // referme après la même inactivité.
+    if (idle >= UIIdle::POPUP_MS && reglables_liste_ouverte()) reglables_liste_fermer();
+    // Roue d'actions rapides (ADR-0036) : sous-fenêtre aussi, même inactivité.
+    if (idle >= UIIdle::POPUP_MS && roue_actions_ouverte()) roue_actions_fermer();
+
+    // La sonnerie du réveil est un LAYER du registre : jamais refermée ici.
+    if (ModalRegistry::any_popup_visible()) {
+        if (idle < UIIdle::POPUP_MS) return RetourAuto::RIEN;
+        ModalRegistry::close_all();  // sous-fenêtres masquées, popups en fondu
+        return RetourAuto::POPUPS_FERMES;
+    }
+
+    if (idle < UIIdle::FORECAST_MS) return RetourAuto::RIEN;
+    if (g_central_ctx.forecast_page == 2) return RetourAuto::RIEN;  // déjà au panneau principal
+    if (g_central_ctx.ha_mode) return RetourAuto::RIEN;             // mode HA (pièces) affiché à la demande
+
+    // La page change : la roue d'actions rapides (ADR-0036) visait une tuile d'ici.
+    roue_actions_fermer();
+    return RetourAuto::PREVISIONS;
+}
+
+bool close_popup_if_open(lv_obj_t* card) {
+    if (card == nullptr) return false;
+    if (lv_obj_has_flag(card, LV_OBJ_FLAG_HIDDEN)) return false;
+    // Fondu deja en cours (ouverture ou fermeture) : ne pas le rejouer.
+    // animate_popup_close() repart de LV_OPA_COVER, donc relancer sur un popup
+    // a moitie efface le rallumerait d'un coup avant de le refaire disparaitre.
+    if (lv_anim_get(card, anim_opa_cb) != nullptr) return false;
+    animate_popup_close(card);
+    return true;
+}
+
+// Animations coupées (« Essentielles », « Aucune », mode économie) : un calque à sa place de fin (x = 0, opaque), visible ou masqué,
+// sans animation en cours. C'est ce que posent les animations et leurs callbacks de fin
+// ci-dessous (anim_swipe_out_ready_cb, anim_hide_ready_cb).
+static void calque_poser_final(lv_obj_t* o, bool visible) {
+    if (!o) return;
+    lv_anim_delete(o, anim_x_cb);
+    lv_anim_delete(o, anim_opa_cb);
+    lv_obj_set_x(o, 0);
+    lv_obj_set_style_opa(o, LV_OPA_COVER, LV_PART_MAIN);
+    if (visible) lv_obj_remove_flag(o, LV_OBJ_FLAG_HIDDEN);
+    else         lv_obj_add_flag(o, LV_OBJ_FLAG_HIDDEN);
+}
+
+// Glissement horizontal + fondu croise entre deux layers (swipe previsions).
+// dir = LV_DIR_LEFT (in arrive de la droite, out part a gauche) ou
+//       LV_DIR_RIGHT (in arrive de la gauche, out part a droite).
+// Duree/amplitude : UIAnim::SWIPE_* (200ms / 110px — etait 350ms / 200px).
+// C'est une reponse directe a un geste : elle doit "coller" au doigt.
+// Derivee de transition_widgets() mais en horizontal.
+void animate_swipe_horizontal(lv_obj_t* out_layer, lv_obj_t* in_layer, lv_dir_t dir) {
+    if (out_layer == in_layer) return;
+    if (!details_animes()) {
+        calque_poser_final(out_layer, false);
+        calque_poser_final(in_layer, true);
+        return;
+    }
+
+    const uint32_t DUR    = UIAnim::SWIPE_DUR;
+    const int32_t  OFFSET = UIAnim::SWIPE_OFFSET;
+    const int32_t in_start_x  = (dir == LV_DIR_LEFT) ? OFFSET : -OFFSET;
+    const int32_t out_end_x   = (dir == LV_DIR_LEFT) ? -OFFSET : OFFSET;
+
+    if (out_layer) {
+        // Cancel anims precedentes (swipe rapide repete)
+        lv_anim_delete(out_layer, anim_x_cb);
+        lv_anim_delete(out_layer, anim_opa_cb);
+        start_anim(out_layer, 0, out_end_x, DUR, lv_anim_path_ease_in, anim_x_cb);
+        start_anim(out_layer, LV_OPA_COVER, LV_OPA_TRANSP, DUR, lv_anim_path_ease_in, anim_opa_cb,
+                   anim_swipe_out_ready_cb);
+    }
+    if (in_layer) {
+        lv_anim_delete(in_layer, anim_x_cb);
+        lv_anim_delete(in_layer, anim_opa_cb);
+        lv_obj_remove_flag(in_layer, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_set_x(in_layer, in_start_x);
+        lv_obj_set_style_opa(in_layer, LV_OPA_TRANSP, LV_PART_MAIN);
+
+        start_anim(in_layer, in_start_x, 0, DUR, lv_anim_path_ease_out, anim_x_cb);
+        start_anim(in_layer, LV_OPA_TRANSP, LV_OPA_COVER, DUR, lv_anim_path_ease_out, anim_opa_cb);
+    }
+}
+
+// Slide-in depuis la droite + fondu pour un bandeau d'alerte qui entre
+// dans le rotateur central (alertes HA, alertes Meteo-France).
+// Duree/amplitude : UIAnim::ALERT_* (180ms / 44px — etait 300ms / 100px).
+void animate_alert_enter(lv_obj_t* alert_wrap) {
+    if (!alert_wrap) return;
+    if (!details_animes()) {
+        calque_poser_final(alert_wrap, true);
+        return;
+    }
+    const uint32_t DUR    = UIAnim::ALERT_DUR;
+    const int32_t  OFFSET = UIAnim::ALERT_OFFSET;
+
+    lv_obj_remove_flag(alert_wrap, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_set_x(alert_wrap, OFFSET);
+    lv_obj_set_style_opa(alert_wrap, LV_OPA_TRANSP, LV_PART_MAIN);
+
+    start_anim(alert_wrap, OFFSET, 0, DUR, lv_anim_path_ease_out, anim_x_cb);
+    start_anim(alert_wrap, LV_OPA_TRANSP, LV_OPA_COVER, DUR, lv_anim_path_ease_out, anim_opa_cb);
+}
+
+// Fondu croise pur entre deux calques plein cadre (previsions <-> switches HA).
+// Pas de glissement : les deux calques occupent exactement la meme zone, un
+// deplacement ferait "sauter" le contenu. Duree UIAnim::SWIPE_DUR.
+// Annule aussi les anims X d'un swipe en cours et remet x=0 — sinon un tap HA
+// pendant/juste apres un swipe laisse le calque decale ou en train de glisser.
+// Si le calque entrant est deja visible (ex: swipe previsions sous overlay HA),
+// on ne le remet pas transparent : rejouer l'entree le blankerait.
+void animate_crossfade_layers(lv_obj_t* out_layer, lv_obj_t* in_layer) {
+    if (out_layer == in_layer) return;
+    if (!details_animes()) {
+        calque_poser_final(out_layer, false);
+        calque_poser_final(in_layer, true);
+        return;
+    }
+    const uint32_t DUR = UIAnim::SWIPE_DUR;
+
+    if (out_layer) {
+        lv_anim_delete(out_layer, anim_opa_cb);
+        lv_anim_delete(out_layer, anim_x_cb);
+        lv_obj_set_x(out_layer, 0);
+        start_anim(out_layer, LV_OPA_COVER, LV_OPA_TRANSP, DUR, lv_anim_path_ease_in, anim_opa_cb,
+                   anim_hide_ready_cb);
+    }
+    if (in_layer) {
+        lv_anim_delete(in_layer, anim_opa_cb);
+        lv_anim_delete(in_layer, anim_x_cb);
+        lv_obj_set_x(in_layer, 0);
+
+        const bool already_visible =
+            !lv_obj_has_flag(in_layer, LV_OBJ_FLAG_HIDDEN) &&
+            lv_obj_get_style_opa(in_layer, LV_PART_MAIN) > LV_OPA_TRANSP;
+
+        lv_obj_remove_flag(in_layer, LV_OBJ_FLAG_HIDDEN);
+
+        if (already_visible) {
+            // Deja a l'ecran : rester opaque, pas de replay d'entree.
+            lv_obj_set_style_opa(in_layer, LV_OPA_COVER, LV_PART_MAIN);
+            return;
+        }
+
+        lv_obj_set_style_opa(in_layer, LV_OPA_TRANSP, LV_PART_MAIN);
+
+        start_anim(in_layer, LV_OPA_TRANSP, LV_OPA_COVER, DUR, lv_anim_path_ease_out, anim_opa_cb);
+    }
+}
+
+// =============================================================================
+// Rouleau d'icone meteo
+// L'icone est deja peinte (glyphe + offset de base poses par
+// update_meteo_icon()) : on ne fait que la faire *entrer*. Elle part de
+// base+ROLL_ICON_PX (en dessous) a opacite nulle et remonte a sa place en
+// apparaissant. Pas de sortie animee : il n'y a que 2 labels par tuile (l1/l2),
+// un vrai fondu croise demanderait 2 labels de plus par tuile (x10 tuiles).
+// A 190ms le raccord se lit comme un basculement de volet, pas comme un saut.
+// =============================================================================
+bool g_forecast_roll_suppress = false;
+
+static void roll_in_one_label(lv_obj_t* o, uint32_t delay_ms) {
+    if (!o) return;
+    if (lv_obj_has_flag(o, LV_OBJ_FLAG_HIDDEN)) return;
+
+    lv_anim_delete(o, anim_ty_cb);
+    lv_anim_delete(o, anim_opa_cb);
+
+    // Base = offset pose par update_meteo_icon() juste avant (l1_y / l2_y).
+    const int32_t base = lv_obj_get_style_translate_y(o, LV_PART_MAIN);
+
+    // Etat de depart applique tout de suite : avec un delay, LVGL n'appelle pas
+    // exec_cb avant la fin du delai — sans ca l'icone clignoterait en place.
+    lv_obj_set_style_translate_y(o, (int32_t)(base + UIAnim::ROLL_ICON_PX), LV_PART_MAIN);
+    lv_obj_set_style_opa(o, LV_OPA_TRANSP, LV_PART_MAIN);
+
+    start_anim(o, base + UIAnim::ROLL_ICON_PX, base, UIAnim::ROLL_ICON, lv_anim_path_ease_out,
+               anim_ty_cb, nullptr, delay_ms);
+    start_anim(o, LV_OPA_TRANSP, LV_OPA_COVER, UIAnim::ROLL_ICON, lv_anim_path_ease_out,
+               anim_opa_cb, nullptr, delay_ms);
+}
+
+// Animations coupées : l'icône reste où update_meteo_icon() vient de la poser, opaque. Un
+// rouleau encore en route est retiré : il réécrirait l'ancien décalage.
+static void roll_poser_final(lv_obj_t* o) {
+    if (!o) return;
+    lv_anim_delete(o, anim_ty_cb);
+    lv_anim_delete(o, anim_opa_cb);
+    lv_obj_set_style_opa(o, LV_OPA_COVER, LV_PART_MAIN);
+}
+
+void animate_icon_roll_in(lv_obj_t* l1, lv_obj_t* l2, uint32_t delay_ms) {
+    if (g_forecast_roll_suppress) return;
+    if (!details_animes()) {
+        roll_poser_final(l1);
+        roll_poser_final(l2);
+        return;
+    }
+    roll_in_one_label(l1, delay_ms);
+    roll_in_one_label(l2, delay_ms);
+}
+
+// =============================================================================
+// Horloge a rouleau
+// =============================================================================
+ClockRollerCtx g_clock_roller;
+
+// Géométrie : tout est posé dans tab5-lvgl.yaml (tuile clock_tile), plus rien
+// n'est calculé ici depuis le 01/10/2026. La course du rouleau = la hauteur du
+// cadre qui rogne, lue dans son style (valeur YAML, disponible avant tout layout).
+static int clock_box_h(const ClockDigitRoller& r) {
+    return lv_obj_get_style_height(r.wrap, LV_PART_MAIN);
+}
+
+// Fait tourner un chiffre vers sa nouvelle valeur. Les deux labels glissent
+// d'une hauteur de boite vers le haut : l'ancien sort par le haut, le nouveau
+// — pose une boite plus bas — prend sa place.
+static void roll_clock_digit(ClockDigitRoller& r, int box_h, char digit) {
+    lv_obj_t* out_lbl = r.lbl[r.cur];
+    lv_obj_t* in_lbl  = r.lbl[r.cur ^ 1];
+    if (!out_lbl || !in_lbl) return;
+
+    lv_anim_delete(out_lbl, anim_ty_cb);
+    lv_anim_delete(in_lbl, anim_ty_cb);
+
+    const char new_text[2] = {digit, '\0'};
+    lv_label_set_text(in_lbl, new_text);
+    lv_obj_set_style_translate_y(in_lbl, box_h, LV_PART_MAIN);
+
+    start_anim(out_lbl, 0, -box_h, UIAnim::ROLL_CLOCK, lv_anim_path_ease_in_out, anim_ty_cb);
+    start_anim(in_lbl, box_h, 0, UIAnim::ROLL_CLOCK, lv_anim_path_ease_in_out, anim_ty_cb);
+
+    r.cur ^= 1;
+    r.shown = digit;
+}
+
+// Pose un chiffre sans animation (premier affichage). Les DEUX labels reçoivent
+// le texte, et celui en attente repart sous le cadre : tant qu'aucun chiffre
+// n'a été peint, les deux labels du YAML sont superposés (même texte).
+static void set_clock_digit_immediate(ClockDigitRoller& r, int box_h, char digit) {
+    if (!r.lbl[r.cur]) return;
+    // Animations coupées : la pose directe remplace aussi le rouleau (une minute plus
+    // tard que le précédent : rien ne tourne en principe, mais rien ne doit réécrire
+    // la position posée ici).
+    lv_anim_delete(r.lbl[0], anim_ty_cb);
+    lv_anim_delete(r.lbl[1], anim_ty_cb);
+    const char text[2] = {digit, '\0'};
+    lv_label_set_text(r.lbl[r.cur], text);
+    lv_obj_set_style_translate_y(r.lbl[r.cur], 0, LV_PART_MAIN);
+    if (r.lbl[r.cur ^ 1]) {
+        lv_label_set_text(r.lbl[r.cur ^ 1], text);
+        lv_obj_set_style_translate_y(r.lbl[r.cur ^ 1], box_h, LV_PART_MAIN);
+    }
+    r.shown = digit;
+}
+
+// Fond de la tuile de l'horloge (10/10/2026) : l'opacité posée sur l'objet passe devant
+// celle du style partagé style_horloge_page, qu'un thème redessine (formes) sans la
+// toucher ; la bordure, l'ombre et le dégradé du thème reviennent avec le fond.
+void horloge_fond_ui(lv_obj_t* tuile, bool fond) {
+    if (tuile == nullptr) return;
+    lv_obj_set_style_bg_opa(tuile, fond ? LV_OPA_COVER : LV_OPA_TRANSP, LV_PART_MAIN);
+}
+
+// Horloge + date (appelée par time: on_time de tab5-sensors-diagnostics.yaml).
+
+void update_clock_date_ui(lv_obj_t* lbl_date,
+    int hour, int minute, int day_of_week, int day_of_month, int month) {
+    ClockRollerCtx& c = g_clock_roller;
+    if (c.d[0].wrap && c.d[0].lbl[0]) {
+        char hhmm[5];
+        snprintf(hhmm, sizeof(hhmm), "%02d%02d", hour, minute);
+
+        // Un rouleau par chiffre : de 22 a 23 mn, seule l'unite tourne.
+        // shown == 0 (jamais peint) ou animations sous « Complètes » -> pose directe.
+        for (int i = 0; i < 4; i++) {
+            ClockDigitRoller& r = c.d[i];
+            if (r.shown == hhmm[i] || !r.wrap) continue;
+            const int box_h = clock_box_h(r);
+            if (r.shown == 0 || !details_animes()) set_clock_digit_immediate(r, box_h, hhmm[i]);
+            else              roll_clock_digit(r, box_h, hhmm[i]);
+        }
+    }
+    if (lbl_date) {
+        // [AI-WARNING] lbl_date est en roboto_45_b : ses glyphes doivent couvrir
+        // fr_day_short_utf8(), les chiffres et clock_month_short_utf8() (tab5_core.cpp,
+        // tab5-styles.yaml, règle 6) — changer de police = vérifier sa liste. Même
+        // chose pour leurs traductions (Tab5/lang/*.yaml, tests/test_i18n.py).
+        // day_of_week ESPHome : 1 = dimanche … 7 = samedi.
+        // Ordre des mots traduisible (02/10/2026) : « Ven 02 Oct » en français, mais
+        // « 02 Eki Cum » en turc ; les autres langues gardent l'ordre français.
+        char quantieme[12];
+        snprintf(quantieme, sizeof(quantieme), "%02d", day_of_month);
+        const std::string date = tr_fill("{jour_court} {quantieme} {mois_court}",
+                                         {{"jour_court", day_short_utf8(day_of_week - 1)},
+                                          {"quantieme", quantieme},
+                                          {"mois_court", month_short_utf8(month)}});
+        lv_label_set_recolor(lbl_date, false);
+        ui_text(lbl_date, date.c_str());  // appelée chaque minute : ne repeint qu'au changement de jour
+    }
+}
+
+
+
+// =============================================================================
+// 1D : Micro-interactions boutons verre (transform_scale au pressed)
+// Style pressed partagé, injecté via lv_obj_add_style(obj, style, LV_STATE_PRESSED).
+// `pressed:` est refusé dans style_definitions, mais `pressed: { styles: x }` est
+// accepté sur un widget (vérifié le 26/09/2026) : ce qui reste en C++, c'est le
+// pivot au centre, qui dépend de la taille de chaque bouton.
+// Aucune transition : -DLV_THEME_DEFAULT_TRANSITION_TIME=0 (build_flags de
+// tab5-ha-hmi.yaml ; voulu le 26/09/2026, effectif le 28/09/2026) — le thème LVGL animait l'appui en 80 ms et le
+// relâchement en 80 ms après 70 ms de délai. Échelle et assombrissement sont
+// désormais appliqués d'une image à l'autre.
+// =============================================================================
+static lv_style_t style_btn_pressed;
+// Même effet pour une surface de verre PRÉ-MÉLANGÉE (opaque, essai D7 du 26/09/2026 :
+// style_meteo_card_page / style_clim_btn_page) : 30 % d'une couleur déjà mélangée à
+// 58 % donnerait un appui plus sombre qu'avant ; 132/255 (≈ 52 % = 30 % × 255 / 147)
+// redonne exactement la teinte d'origine.
+static lv_style_t style_btn_pressed_opaque;
+static bool btn_styles_inited = false;
+
+static void ensure_btn_styles_inited() {
+    if (btn_styles_inited) return;
+    // Scale instantané, sans transition : réactivité maximale au tap.
+    lv_style_init(&style_btn_pressed);
+    lv_style_set_transform_scale_x(&style_btn_pressed, 240);  // 240/256 ~= 94%
+    lv_style_set_transform_scale_y(&style_btn_pressed, 240);
+    lv_style_set_bg_opa(&style_btn_pressed, LV_OPA_30);       // assombrit le verre
+    lv_style_init(&style_btn_pressed_opaque);
+    lv_style_set_transform_scale_x(&style_btn_pressed_opaque, 240);
+    lv_style_set_transform_scale_y(&style_btn_pressed_opaque, 240);
+    lv_style_set_bg_opa(&style_btn_pressed_opaque, 132);
+    btn_styles_inited = true;
+}
+
+// Applique le style pressed (transform_scale 94 % + bg_opa 30 %) à un bouton, pivot
+// au centre du bouton.
+static void setup_button_press_animation(lv_obj_t* btn) {
+    if (!btn) return;
+    ensure_btn_styles_inited();
+    // Pivot au centre pour un scale symetrique (pas depuis le coin haut-gauche).
+    lv_obj_set_style_transform_pivot_x(btn, lv_obj_get_width(btn) / 2, LV_PART_MAIN);
+    lv_obj_set_style_transform_pivot_y(btn, lv_obj_get_height(btn) / 2, LV_PART_MAIN);
+    // Surface opaque (verre pré-mélangé du tableau de bord, ou verre plein des popups
+    // depuis le 01/10/2026) : opacité d'appui recalée à 52 %.
+    const bool opaque = lv_obj_get_style_bg_opa(btn, LV_PART_MAIN) == LV_OPA_COVER;
+    lv_obj_add_style(btn, opaque ? &style_btn_pressed_opaque : &style_btn_pressed, LV_STATE_PRESSED);
+}
+
+// Heuristique : objet clickable + radius 18 = bouton verre (style_clim_btn).
+// Inclut aussi les tuiles meteo cliquables (effet desirable : feedback tactile).
+static bool est_bouton_verre(lv_obj_t* obj) {
+    return lv_obj_has_flag(obj, LV_OBJ_FLAG_CLICKABLE) && lv_obj_get_style_radius(obj, LV_PART_MAIN) == 18;
+}
+
+// [AI-WARNING] Thèmes (lot 3, 05/10/2026) : un thème peut changer le rayon des styles
+// partagés (theme_formes), dès le démarrage, avant le repérage de 2 s. tab5_theme_repeindre
+// marque donc les boutons verre (rayon 18 de l'état compilé) AVANT de poser les formes
+// d'un thème ; apply_pressed_scale_to_tree retient les marqués comme ceux de rayon 18.
+// Sans ce marquage, les boutons d'un thème à rayon ≠ 18 perdraient l'effet d'appui.
+// Une seule fois : après le premier passage, le rayon peut déjà venir d'un thème.
+static bool s_boutons_verre_marques = false;
+
+static void marquer_arbre(lv_obj_t* root) {
+    if (est_bouton_verre(root)) lv_obj_add_flag(root, LV_OBJ_FLAG_USER_1);
+    const uint32_t cnt = lv_obj_get_child_count(root);
+    for (uint32_t i = 0; i < cnt; i++) marquer_arbre(lv_obj_get_child(root, i));
+}
+
+void boutons_verre_marquer(lv_obj_t* root) {
+    if (s_boutons_verre_marques || !root) return;
+    marquer_arbre(root);
+    s_boutons_verre_marques = true;
+}
+
+// Source unique de l'appui des boutons verre de rayon 18 : depuis le 01/10/2026 (D6,
+// audit des conteneurs) aucun `pressed:` YAML ne le répète, 68 ont été retirés. Un
+// `pressed:` YAML ne reste que là où l'appui diffère (rayon ≠ 18, autre opacité, bordure).
+// Pendant les 2 s qui précèdent cet appel (on_boot), ces boutons ne marquent pas l'appui.
+void apply_pressed_scale_to_tree(lv_obj_t* root) {
+    if (!root) return;
+    if (est_bouton_verre(root) || lv_obj_has_flag(root, LV_OBJ_FLAG_USER_1)) {
+        setup_button_press_animation(root);
+    }
+    // Recursion dans les enfants
+    uint32_t cnt = lv_obj_get_child_count(root);
+    for (uint32_t i = 0; i < cnt; i++) {
+        apply_pressed_scale_to_tree(lv_obj_get_child(root, i));
+    }
+}
+
+// Le jeu de bille a ete extrait dans marble_game.cpp (namespace Marble) :
+// roguelite plein ecran, trop volumineux pour cohabiter ici.
+
+// Écritures comparées d'abord (lot L10, 08/10/2026) : chaque repeint des boutons de vue
+// (Température, Énergie), des 15 bascules du réveil ou du mode de l'assistant reposait
+// les trois propriétés, et LVGL 9.5.0 invalide le bouton même à valeur égale.
+void highlight_button_border(lv_obj_t* btn, bool active, uint32_t color, int32_t active_width) {
+    if (!btn) return;
+    ui_style_couleur(btn, LV_STYLE_BORDER_COLOR, active ? color : UIColor.GLASS_RIM);
+    ui_style_num(btn, LV_STYLE_BORDER_OPA, active ? LV_OPA_COVER : LV_OPA_40);
+    ui_style_num(btn, LV_STYLE_BORDER_WIDTH, active ? active_width : 1);
+}
+
+// --- Tracés construits en C++ (Température ADR-0032, Météo ADR-0043) -----------------------
+
+// Un rectangle sans style, non cliquable, masqué : grille, barres, teinte, traits, points.
+lv_obj_t* ui_rectangle(lv_obj_t* parent, lv_opa_t opa, int32_t rayon) {
+    lv_obj_t* o = lv_obj_create(parent);
+    lv_obj_remove_style_all(o);
+    lv_obj_set_style_bg_opa(o, opa, LV_PART_MAIN);
+    lv_obj_set_style_radius(o, rayon, LV_PART_MAIN);
+    lv_obj_set_size(o, 2, 2);
+    lv_obj_remove_flag(o, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_add_flag(o, LV_OBJ_FLAG_HIDDEN);
+    return o;
+}
+
+// Une ligne (lv_line) arrondie, non cliquable, masquée. lv_line_set_points() ne copie pas
+// les points : leur tableau doit vivre aussi longtemps que la ligne.
+lv_obj_t* ui_ligne(lv_obj_t* parent, int32_t epaisseur) {
+    lv_obj_t* o = lv_line_create(parent);
+    lv_obj_set_pos(o, 0, 0);
+    lv_obj_set_style_line_width(o, epaisseur, LV_PART_MAIN);
+    lv_obj_set_style_line_rounded(o, true, LV_PART_MAIN);
+    lv_obj_remove_flag(o, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_add_flag(o, LV_OBJ_FLAG_HIDDEN);
+    return o;
+}
+
+// Place, taille, et montre (chaque écriture comparée d'abord).
+void ui_poser(lv_obj_t* o, int32_t x, int32_t y, int32_t w, int32_t h) {
+    if (o == nullptr) return;
+    if (lv_obj_get_style_width(o, LV_PART_MAIN) != w) lv_obj_set_width(o, w);
+    if (lv_obj_get_style_height(o, LV_PART_MAIN) != h) lv_obj_set_height(o, h);
+    ui_x(o, x);
+    ui_y(o, y);
+    ui_hidden(o, false);
+}
+
+// Courbe lissée et monotone (Fritsch-Carlson) : elle passe par chaque point sans jamais
+// dépasser deux valeurs voisines (pas de creux ni de bosse inventés entre deux points).
+// Venue du popup Météo (09/10/2026), partagée avec la zone à gauche de l'horloge
+// (ADR-0051, 10/10/2026). Au plus kCourbeLissePoints points (au-delà, rien n'est tracé).
+int ui_courbe_lisse(const float* xs, const float* ys, int n, int par_segment, lv_point_precise_t* out) {
+    if (n < 2 || n > kCourbeLissePoints || par_segment < 1) return 0;
+    float d[kCourbeLissePoints], m[kCourbeLissePoints];
+    for (int k = 0; k < n - 1; k++) d[k] = (ys[k + 1] - ys[k]) / (xs[k + 1] - xs[k]);
+    m[0] = d[0];
+    m[n - 1] = d[n - 2];
+    for (int k = 1; k < n - 1; k++) m[k] = (d[k - 1] * d[k] <= 0.0f) ? 0.0f : (d[k - 1] + d[k]) / 2.0f;
+    for (int k = 0; k < n - 1; k++) {
+        if (d[k] == 0.0f) {
+            m[k] = m[k + 1] = 0.0f;
+            continue;
+        }
+        const float a = m[k] / d[k], b = m[k + 1] / d[k], s = a * a + b * b;
+        if (s > 9.0f) {
+            const float t = 3.0f / std::sqrt(s);
+            m[k] = t * a * d[k];
+            m[k + 1] = t * b * d[k];
+        }
+    }
+    int np = 0;
+    for (int k = 0; k < n - 1; k++) {
+        const float hx = xs[k + 1] - xs[k];
+        for (int j = 0; j < par_segment; j++) {
+            const float t = static_cast<float>(j) / par_segment, t2 = t * t, t3 = t2 * t;
+            const float y = (2 * t3 - 3 * t2 + 1) * ys[k] + (t3 - 2 * t2 + t) * hx * m[k] +
+                            (-2 * t3 + 3 * t2) * ys[k + 1] + (t3 - t2) * hx * m[k + 1];
+            out[np].x = static_cast<lv_value_precise_t>(lroundf(xs[k] + t * hx));
+            out[np].y = static_cast<lv_value_precise_t>(lroundf(y));
+            np++;
+        }
+    }
+    out[np].x = static_cast<lv_value_precise_t>(lroundf(xs[n - 1]));
+    out[np].y = static_cast<lv_value_precise_t>(lroundf(ys[n - 1]));
+    return np + 1;
+}
