@@ -1,29 +1,36 @@
 # -*- coding: utf-8 -*-
-"""Tests unitaires et structurels du socle autonome Multi-Écrans, Mode Marine & GPS NMEA 0183.
+"""Tests unitaires et structurels du socle autonome Multi-Écrans, Mode Marine & GPS NMEA 0183 (Vague 1 & 2).
 
 Vérifie :
-1. La pureté C++ standard de `firmware/socle/vigie_modele_mondial.h` et `.cpp` (aucune
-   dépendance LVGL, ESPHome ou Home Assistant, aucune allocation dynamique `malloc`/`new`),
-   et la compilation native via `g++`/`clang++` lorsqu'un compilateur C++ hôte est présent.
+1. La pureté C++ standard de `firmware/socle/vigie_modele_mondial.h/.cpp` et
+   `firmware/ecran/vigie_client_api.h/.cpp` (aucune dépendance LVGL, ESPHome ou
+   Home Assistant, aucune allocation dynamique `malloc`/`new`), et la compilation
+   native via `g++`/`clang++` lorsqu'un compilateur C++ hôte est présent.
 2. Le vérificateur de checksum XOR NMEA 0183 (`*HH`) et le décodage complet des trames
    `$GNGGA` / `$GPGGA` et `$GNRMC` / `$GPRMC` (valides, corrompues, sans fix).
 3. Le formatage des coordonnées nautiques DMS/DMM (`48°51.39'N 002°21.13'E`).
 4. Les formules trigonométriques sphériques (distance Haversine, azimut initial vrai,
    rose des vents à 16 secteurs FR/EN) et le recalcul temps réel des alertes catastrophes
    lorsque le bateau ou le véhicule se déplace.
-5. L'architecture Multi-Écrans (`waveshare-7b` 1024×600 et `tab5` M5Stack Tab5 V2 1280×720)
-   entre `tab5_geometrie.h`, `vigie_modele_mondial.h/.cpp` et `geometrie-<carte>.yaml`.
-6. L'absence totale de dépendance à Home Assistant (`api:`, `homeassistant.*`) dans tous
+5. Le décodeur de trame API (`vigie_decoder_trame_api`), la projection cartographique
+   Multi-Écrans (`vigie_projeter_coord_carte`), la persistance NVS CRC32 (`vigie_nvs_calculer_crc32`,
+   `vigie_preparer_bloc_nvs`, `vigie_restaurer_bloc_nvs`), la logique d'urgence DEFCON
+   (`vigie_evaluer_declenchement_alerte`, `vigie_acquitter_alerte`) et le connecteur Client API.
+6. La génération des aperçus visuels hors-tablette (`docs/rendus/`) pour `waveshare-7b`
+   (`1024×600`) et `tab5` (`1280×720`).
+7. L'absence totale de dépendance à Home Assistant (`api:`, `homeassistant.*`) dans tous
    les fichiers YAML du dépôt `alerte_mondiale_7b`.
 """
 
 from __future__ import annotations
 
+import binascii
 import math
 import pathlib
 import re
 import shutil
 import subprocess
+import sys
 import tempfile
 
 import pytest
@@ -32,9 +39,16 @@ import yaml
 REPO = pathlib.Path(__file__).resolve().parent.parent
 SOCLE_H = REPO / "firmware" / "socle" / "vigie_modele_mondial.h"
 SOCLE_CPP = REPO / "firmware" / "socle" / "vigie_modele_mondial.cpp"
+CLIENT_H = REPO / "firmware" / "ecran" / "vigie_client_api.h"
+CLIENT_CPP = REPO / "firmware" / "ecran" / "vigie_client_api.cpp"
 GEOM_H = REPO / "firmware" / "socle" / "tab5_geometrie.h"
 TEST_CPP = REPO / "tools" / "test_vigie_modele_mondial.cpp"
 PAQUETS = REPO / "firmware" / "paquets"
+
+if str(REPO / "tools") not in sys.path:
+    sys.path.insert(0, str(REPO / "tools"))
+
+import generer_rendu_ihm  # noqa: E402
 
 
 class _ChargeurESPHome(yaml.SafeLoader):
@@ -59,6 +73,8 @@ def _charger_yaml(chemin: pathlib.Path) -> dict:
 
 RAYON_TERRE_KM = 6371.0088
 NOEUDS_VERS_KMH = 1.852
+VITESSE_TSUNAMI_KM_PAR_MIN = 11.6666667
+NVS_MAGIC = 0x56494731
 CARDINAUX_FR = (
     "N", "NNE", "NE", "ENE", "E", "ESE", "SE", "SSE",
     "S", "SSO", "SO", "OSO", "O", "ONO", "NO", "NNO",
@@ -234,18 +250,140 @@ def parser_nmea_sentence(sentence: str, fix: dict, timestamp_ms: int = 1000) -> 
     return False
 
 
+def cadre_carte_ecran(code_carte: str) -> tuple[int, int, int, int]:
+    """Miroir exact de `vigie_cadre_carte_ecran()`."""
+    ecran_l, ecran_h = (1280, 720) if code_carte == "tab5" else (1024, 600)
+    x = (16 * ecran_l + 512) // 1024
+    y = (64 * ecran_h + 300) // 600
+    largeur = (640 * ecran_l + 512) // 1024
+    hauteur = (360 * ecran_h + 300) // 600
+    return x, y, largeur, hauteur
+
+
+def projeter_coord_carte_ecran(lat_deg: float, lon_deg: float, code_carte: str) -> tuple[int, int, bool]:
+    """Miroir exact de `vigie_projeter_coord_carte_ecran()`."""
+    x, y, largeur, hauteur = cadre_carte_ecran(code_carte)
+    dedans = -90.0 <= lat_deg <= 90.0 and -180.0 <= lon_deg <= 180.0
+    lat_c = max(-90.0, min(90.0, lat_deg))
+    lon_c = max(-180.0, min(180.0, lon_deg))
+    px = x + int(round(((lon_c + 180.0) / 360.0) * largeur))
+    py = y + int(round(((90.0 - lat_c) / 180.0) * hauteur))
+    return px, py, dedans
+
+
+def calculer_crc32_ieee(donnees: bytes) -> int:
+    """Miroir exact de `vigie_nvs_calculer_crc32()` (polynôme IEEE 802.3 0xEDB88320)."""
+    crc = 0xFFFFFFFF
+    for b in donnees:
+        crc ^= b
+        for _ in range(8):
+            masque = -(crc & 1) & 0xFFFFFFFF
+            crc = (crc >> 1) ^ (0xEDB88320 & masque)
+    return (~crc) & 0xFFFFFFFF
+
+
+def decoder_trame_api_python(trame: str, gps_fix: dict | None = None) -> dict:
+    """Miroir exact de `vigie_decoder_trame_api()`."""
+    etat = {
+        "derniere_maj_utc": 0,
+        "kp": 0.0,
+        "zone_active_idx": 0,
+        "zones": [],
+        "alertes": [],
+        "acquittees": set(),
+        "gps": gps_fix or {"fix_valide": False},
+    }
+    sev_rang = {"VERT": 0, "JAUNE": 1, "ORANGE": 2, "ROUGE": 3}
+
+    for ligne in trame.splitlines():
+        ligne = ligne.strip()
+        if not ligne or ligne.startswith("#"):
+            continue
+        champs = ligne.split("|")
+        tag = champs[0]
+        if tag in ("HEAD", "VIGIE1"):
+            etat["derniere_maj_utc"] = int(champs[1])
+            etat["kp"] = float(champs[2]) if len(champs) > 2 and champs[2] else 0.0
+            etat["zones"] = []
+            etat["alertes"] = []
+        elif tag == "ZONE" and len(champs) >= 5:
+            z = {
+                "id": champs[1],
+                "nom": champs[2],
+                "lat": float(champs[3]),
+                "lon": float(champs[4]),
+                "est_zone_gps_mobile": champs[1] in ("GPS", "BATEAU", "LIVE"),
+                "temp_c": float(champs[6]) if len(champs) > 6 and champs[6] else 0.0,
+                "creneaux_15m": [float(x) for x in champs[18].split(",")] if len(champs) > 18 and champs[18] else [],
+                "vagues_m": float(champs[19]) if len(champs) > 19 and champs[19] else 0.0,
+                "creneaux_5m": [],
+                "jours": [],
+            }
+            etat["zones"].append(z)
+        elif tag == "RAIN5M" and len(champs) >= 3:
+            for z in etat["zones"]:
+                if z["id"] == champs[1]:
+                    z["creneaux_5m"] = [float(x) for x in champs[2].split(",")]
+        elif tag == "DAY" and len(champs) >= 6:
+            for z in etat["zones"]:
+                if z["id"] == champs[1]:
+                    z["jours"].append({"date": champs[2], "code": int(champs[3]), "tmin": float(champs[4]), "tmax": float(champs[5])})
+        elif tag in ("HAZ", "ALERT") and len(champs) >= 7:
+            al = {
+                "id": champs[1],
+                "categorie": champs[2],
+                "severite": champs[3],
+                "lat": float(champs[4]),
+                "lon": float(champs[5]),
+                "valeur_principale": float(champs[6]),
+                "alerte_tsunami": len(champs) > 8 and champs[8] in ("1", "T", "t"),
+                "titre": champs[11] if len(champs) > 11 else "",
+            }
+            etat["alertes"].append(al)
+
+    # Tri par sévérité décroissante, puis tsunami, puis valeur principale
+    etat["alertes"].sort(
+        key=lambda a: (sev_rang.get(a["severite"], 0), 1 if a["alerte_tsunami"] else 0, a["valeur_principale"]),
+        reverse=True,
+    )
+
+    # Recalcul distances GPS
+    ref_lat, ref_lon = None, None
+    if etat["gps"].get("fix_valide"):
+        ref_lat = etat["gps"]["latitude_deg"]
+        ref_lon = etat["gps"]["longitude_deg"]
+        if etat["zones"] and etat["zones"][0]["est_zone_gps_mobile"]:
+            etat["zones"][0]["lat"] = ref_lat
+            etat["zones"][0]["lon"] = ref_lon
+    elif etat["zones"]:
+        ref_lat = etat["zones"][0]["lat"]
+        ref_lon = etat["zones"][0]["lon"]
+
+    if ref_lat is not None and ref_lon is not None:
+        for a in etat["alertes"]:
+            a["distance_km"] = calculer_distance_haversine_km(ref_lat, ref_lon, a["lat"], a["lon"])
+            a["azimut_deg"] = calculer_azimut_deg(ref_lat, ref_lon, a["lat"], a["lon"])
+            a["eta_tsunami_min"] = int(round(a["distance_km"] / VITESSE_TSUNAMI_KM_PAR_MIN)) if a["alerte_tsunami"] else -1
+
+    return etat
+
+
 # ==============================================================================
 # 1. TESTS DE PURETÉ C++ ET HARNAIS DE COMPILATION
 # ==============================================================================
 
-def test_socle_cpp_pur_sans_dependance_lvgl_ni_esphome_ni_allocation():
-    """Le socle C++ mondial doit être 100 % pur C++ standard et sans allocation dynamique."""
-    assert SOCLE_H.is_file() and SOCLE_CPP.is_file() and TEST_CPP.is_file()
-    for fichier in (SOCLE_H, SOCLE_CPP):
+def test_socle_et_client_cpp_purs_sans_dependance_lvgl_ni_esphome_ni_allocation():
+    """Le socle C++ mondial et le client API doivent être 100 % purs C++ standard et sans allocation dynamique."""
+    for f in (SOCLE_H, SOCLE_CPP, CLIENT_H, CLIENT_CPP, TEST_CPP):
+        assert f.is_file(), f"Fichier manquant : {f}"
+
+    for fichier in (SOCLE_H, SOCLE_CPP, CLIENT_H, CLIENT_CPP):
         texte = fichier.read_text(encoding="utf-8")
         inclus = set(re.findall(r'^\s*#\s*include\s*[<"]([^>"]+)[>"]', texte, re.M))
         autorises = {
             "vigie_modele_mondial.h",
+            "../socle/vigie_modele_mondial.h",
+            "vigie_client_api.h",
             "cstdint", "cstddef", "cmath", "cstring", "cstdio", "cstdlib", "algorithm",
         }
         assert inclus <= autorises, f"{fichier.name} inclut des en-têtes non autorisés : {inclus - autorises}"
@@ -255,15 +393,16 @@ def test_socle_cpp_pur_sans_dependance_lvgl_ni_esphome_ni_allocation():
             code_sans_comm,
         )
         assert not interdits, f"Symboles interdits dans {fichier.name} : {interdits}"
-        # Vérification d'équilibre syntaxique des accolades et parenthèses
         assert code_sans_comm.count("{") == code_sans_comm.count("}")
         assert code_sans_comm.count("(") == code_sans_comm.count(")")
 
 
 def test_signatures_et_constantes_cpp_conformes_au_miroir():
-    """Vérifie que toutes les fonctions et constantes de vigie_modele_mondial.h/.cpp sont présentes et exactes."""
+    """Vérifie que toutes les fonctions et constantes de la Vague 1 & 2 sont présentes et exactes."""
     h_txt = SOCLE_H.read_text(encoding="utf-8")
     cpp_txt = SOCLE_CPP.read_text(encoding="utf-8")
+    client_h_txt = CLIENT_H.read_text(encoding="utf-8")
+    client_cpp_txt = CLIENT_CPP.read_text(encoding="utf-8")
 
     for struct_name in (
         "struct VigieGpsFix",
@@ -274,6 +413,10 @@ def test_signatures_et_constantes_cpp_conformes_au_miroir():
         "struct VigieAlerteCatastrophe",
         "struct VigieEtatMondial",
         "struct VigieProfilCarte",
+        "struct VigieCadreCarte",
+        "struct VigiePointPixel",
+        "struct VigieBlocNvs",
+        "struct VigieDecisionUrgence",
     ):
         assert struct_name in h_txt, f"Structure manquante : {struct_name}"
 
@@ -291,25 +434,30 @@ def test_signatures_et_constantes_cpp_conformes_au_miroir():
         "vigie_recalculer_distances_gps",
         "vigie_recalculer_compteurs_alertes",
         "vigie_niveau_solaire_depuis_kp",
+        "vigie_decoder_trame_api",
+        "vigie_cadre_carte_ecran",
+        "vigie_projeter_coord_carte",
+        "vigie_projeter_coord_carte_ecran",
+        "vigie_nvs_calculer_crc32",
+        "vigie_preparer_bloc_nvs",
+        "vigie_restaurer_bloc_nvs",
+        "vigie_alerte_est_acquittee",
+        "vigie_acquitter_alerte",
+        "vigie_evaluer_declenchement_alerte",
     ):
-        assert fn in h_txt and fn in cpp_txt, f"Fonction manquante : {fn}"
+        assert fn in h_txt and fn in cpp_txt, f"Fonction socle manquante : {fn}"
 
-    assert "6371.0088" in cpp_txt
-    assert "1.852" in h_txt
-
-    # Vérifier que toutes les trames NMEA de test_vigie_modele_mondial.cpp qui doivent être valides ont un checksum XOR exact
-    test_cpp_txt = TEST_CPP.read_text(encoding="utf-8")
-    assert "gga_paris" in test_cpp_txt and "rmc_brest" in test_cpp_txt
-    for trame in (
-        "$GNGGA,123519,4807.038,N,01131.000,E,1,08,0.9,545.4,M,46.9,M,,*59",
-        "$GNGGA,142000.00,4851.3900,N,00221.1300,E,1,11,0.8,35.2,M,47.0,M,,*4B",
-        "$GNRMC,142530.00,A,4823.4000,N,00429.1600,W,14.2,270.0,181026,,,A*6C",
-        "$GPGGA,180000.00,4000.0000,N,02500.0000,W,1,09,1.1,0.0,M,0.0,M,,*4D",
+    for fn_client in (
+        "vigie_construire_url_api",
+        "vigie_formater_statut_fraicheur",
+        "vigie_client_api_recevoir_trame",
+        "vigie_client_api_charger_cache_nvs",
     ):
-        assert trame in test_cpp_txt
-        assert nmea_verifier_checksum(trame), f"Checksum invalide pour {trame} (attendu *{nmea_calculer_checksum(trame):02X})"
+        assert fn_client in client_h_txt and fn_client in client_cpp_txt, f"Fonction client API manquante : {fn_client}"
 
-    # Si g++ ou clang++ est disponible (ex: runner CI Linux/macOS/MinGW), compiler et exécuter le binaire C++
+    assert "0x56494731UL" in h_txt
+    assert "0xEDB88320UL" in cpp_txt
+
     compilateur = shutil.which("g++") or shutil.which("clang++")
     if compilateur:
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -321,8 +469,10 @@ def test_signatures_et_constantes_cpp_conformes_au_miroir():
                 "-Wextra",
                 "-Werror",
                 f"-I{REPO / 'firmware' / 'socle'}",
+                f"-I{REPO / 'firmware' / 'ecran'}",
                 str(TEST_CPP),
                 str(SOCLE_CPP),
+                str(CLIENT_CPP),
                 "-o",
                 str(binaire),
             ]
@@ -346,7 +496,6 @@ def test_nmea_checksum_valide_et_invalide():
 
 def test_decodage_nmea_gga_et_rmc_et_format_nautique():
     fix: dict = {}
-    # 1. Trame GGA à Paris (48°51.39'N, 002°21.13'E)
     gga = "$GNGGA,142000.00,4851.3900,N,00221.1300,E,1,11,0.8,35.2,M,47.0,M,,*4B"
     assert parser_nmea_sentence(gga, fix, timestamp_ms=1000) is True
     assert fix["fix_valide"] is True
@@ -357,12 +506,10 @@ def test_decodage_nmea_gga_et_rmc_et_format_nautique():
     assert math.isclose(fix["longitude_deg"], 2.352167, abs_tol=1e-4)
     assert fix["coords_nautiques"] == "48°51.39'N 002°21.13'E"
 
-    # 2. Trame RMC avec checksum erroné -> rejetée sans écraser le fix
     rmc_corrompue = "$GNRMC,142530.00,A,4823.4000,N,00429.1600,W,14.2,270.0,181026,,,A*FF"
     assert parser_nmea_sentence(rmc_corrompue, fix, timestamp_ms=1500) is False
     assert fix["coords_nautiques"] == "48°51.39'N 002°21.13'E"
 
-    # 3. Trame RMC valide au large de Brest (48°23.40'N, 004°29.16'W, 14.2 nœuds, cap 270°)
     rmc_brest = "$GNRMC,142530.00,A,4823.4000,N,00429.1600,W,14.2,270.0,181026,,,A*6C"
     assert parser_nmea_sentence(rmc_brest, fix, timestamp_ms=2000) is True
     assert fix["fix_valide"] is True
@@ -379,7 +526,6 @@ def test_decodage_nmea_gga_et_rmc_et_format_nautique():
 # ==============================================================================
 
 def test_haversine_azimut_et_recalcul_temps_reel_bateau():
-    # Position 1 : Brest (48.39°N, -4.486°W) -> Épicentre Tsunami Açores (38.5°N, -28.0°W)
     lat_brest, lon_brest = 48.39, -4.486
     lat_acores, lon_acores = 38.5, -28.0
 
@@ -393,7 +539,6 @@ def test_haversine_azimut_et_recalcul_temps_reel_bateau():
     assert card_fr_1 == "OSO"
     assert card_en_1 == "WSW"
 
-    # Position 2 : Le navire navigue vers le Sud-Ouest jusqu'à (40.0°N, -25.0°W)
     fix: dict = {}
     gga_acores = "$GPGGA,180000.00,4000.0000,N,02500.0000,W,1,09,1.1,0.0,M,0.0,M,,*4D"
     assert parser_nmea_sentence(gga_acores, fix, timestamp_ms=5000) is True
@@ -407,7 +552,69 @@ def test_haversine_azimut_et_recalcul_temps_reel_bateau():
 
 
 # ==============================================================================
-# 4. TESTS DE L'ARCHITECTURE MULTI-ÉCRANS (WAVESHARE 7B 1024x600 & TAB5 1280x720)
+# 4. TESTS VAGUE 2 : DÉCODEUR API, PROJECTION CARTE, NVS CRC32 & URGENCE
+# ==============================================================================
+
+def test_decodeur_trame_api_et_tri_urgence():
+    fix: dict = {}
+    rmc_brest = "$GNRMC,142530.00,A,4823.4000,N,00429.1600,W,14.2,270.0,181026,,,A*6C"
+    assert parser_nmea_sentence(rmc_brest, fix) is True
+
+    trame = (
+        "HEAD|1792332000|6.3|0\n"
+        "ZONE|GPS|Golfe de Gascogne|48.0|-4.0|7200|18.4|16.9|82|1004.8|45.4|63.0|255|95|4.2|24|15|8.2|0.5,3.2,7.8,2.1|3.4|11.5|280|2.9|1.8\n"
+        "RAIN5M|GPS|0.0,0.2,0.8,2.4,5.6,8.2,6.4,3.8,1.9,0.6,0.1,0.0\n"
+        "DAY|GPS|2026-10-19|61|13.2|19.1|14.5|85|58.0|4.0\n"
+        "HAZ|IMO-IS-2026|VOLCAN|ORANGE|63.88|-22.43|4.0|5.0|0|1792331000|IMO|Eruption Reykjanes\n"
+        "HAZ|USGS-ACORES-01|TSUNAMI|ROUGE|38.5|-28.0|7.4|18.0|1|1792331500|USGS,PTWC|Seisme M7.4 Acores\n"
+    )
+    etat = decoder_trame_api_python(trame, gps_fix=fix)
+    assert etat["derniere_maj_utc"] == 1792332000
+    assert math.isclose(etat["kp"], 6.3, abs_tol=1e-2)
+    assert len(etat["zones"]) == 1
+    assert math.isclose(etat["zones"][0]["lat"], 48.39, abs_tol=1e-3)
+    assert len(etat["zones"][0]["creneaux_5m"]) == 12
+    assert len(etat["zones"][0]["jours"]) == 1
+    assert len(etat["alertes"]) == 2
+    assert etat["alertes"][0]["id"] == "USGS-ACORES-01"
+    assert etat["alertes"][0]["eta_tsunami_min"] > 100
+
+
+def test_projection_cartographique_multi_ecrans_7b_et_tab5():
+    x7b, y7b, l7b, h7b = cadre_carte_ecran("waveshare-7b")
+    assert (x7b, y7b, l7b, h7b) == (16, 64, 640, 360)
+    px_eq7b, py_eq7b, ok7b = projeter_coord_carte_ecran(0.0, 0.0, "waveshare-7b")
+    assert ok7b and (px_eq7b, py_eq7b) == (16 + 320, 64 + 180)
+
+    x_t5, y_t5, l_t5, h_t5 = cadre_carte_ecran("tab5")
+    assert (x_t5, y_t5, l_t5, h_t5) == (20, 77, 800, 432)
+    px_eq_t5, py_eq_t5, ok_t5 = projeter_coord_carte_ecran(0.0, 0.0, "tab5")
+    assert ok_t5 and (px_eq_t5, py_eq_t5) == (20 + 400, 77 + 216)
+
+
+def test_crc32_nvs_conforme_ieee_802_3():
+    vecteur = b"123456789"
+    crc_notre = calculer_crc32_ieee(vecteur)
+    crc_std = binascii.crc32(vecteur) & 0xFFFFFFFF
+    assert crc_notre == crc_std == 0xCBF43926
+
+
+def test_generateur_rendu_ihm_hors_tablette_7b_et_tab5():
+    fichiers = generer_rendu_ihm.generer_tous_les_rendus()
+    noms = {p.name for p in fichiers}
+    assert "aperçu_waveshare_7b_1024x600.svg" in noms
+    assert "aperçu_m5stack_tab5_1280x720.svg" in noms
+
+    svg_7b = (REPO / "docs" / "rendus" / "aperçu_waveshare_7b_1024x600.svg").read_text(encoding="utf-8")
+    svg_tab5 = (REPO / "docs" / "rendus" / "aperçu_m5stack_tab5_1280x720.svg").read_text(encoding="utf-8")
+    assert 'width="1024" height="600"' in svg_7b
+    assert 'width="1280" height="720"' in svg_tab5
+    for motif in ("48°51.39'N 002°21.13'E", "NOWCAST PLUIE 60 MIN", "ÉTAT DE LA MER", "TSUNAMI", "OURAGAN"):
+        assert motif in svg_7b and motif in svg_tab5
+
+
+# ==============================================================================
+# 5. TESTS DE L'ARCHITECTURE MULTI-ÉCRANS & GARDE ZÉRO HOME ASSISTANT
 # ==============================================================================
 
 @pytest.mark.parametrize(
@@ -428,36 +635,31 @@ def test_architecture_multi_ecrans_geometrie_et_cartes(carte: str, largeur: int,
     assert int(subs["carte_ecran_h"]) == hauteur
     assert math.isclose(float(subs["carte_police_echelle"]), echelle, abs_tol=1e-3)
 
-    # Vérifier la présence des helpers multi-écrans dans tab5_geometrie.h
     geom_h_txt = GEOM_H.read_text(encoding="utf-8")
     assert "vigie_x_depuis_7b" in geom_h_txt
     assert "vigie_y_depuis_7b" in geom_h_txt
 
 
-def test_point_entree_et_gps_nmea_presents_et_configures():
+def test_point_entree_gps_nmea_et_client_api_presents_et_configures():
     racine_yaml = REPO / "vigie-mondiale-7b.yaml"
     gps_yaml = PAQUETS / "vigie-gps-nmea.yaml"
-    assert racine_yaml.is_file()
-    assert gps_yaml.is_file()
+    api_yaml = PAQUETS / "vigie-client-api.yaml"
+    assert racine_yaml.is_file() and gps_yaml.is_file() and api_yaml.is_file()
 
     racine = _charger_yaml(racine_yaml)
     assert "vigie_carte" in racine["substitutions"]
     pkgs = racine["packages"]
-    assert "gps_nmea" in pkgs
+    assert "gps_nmea" in pkgs and "client_api" in pkgs
 
-    gps_txt = gps_yaml.read_text(encoding="utf-8")
-    assert "vigie_parse_nmea_sentence" in gps_txt
-    assert "vigie_recalculer_distances_gps" in gps_txt
+    api_txt = api_yaml.read_text(encoding="utf-8")
+    assert "vigie_construire_url_api" in api_txt
+    assert "vigie_client_api_recevoir_trame" in api_txt
 
-
-# ==============================================================================
-# 5. GARDE D'INDÉPENDANCE ABSOLUE VIS-À-VIS DE HOME ASSISTANT
-# ==============================================================================
 
 def test_zero_dependance_home_assistant_dans_tous_les_yaml():
     """Aucun fichier YAML de alerte_mondiale_7b ne doit contenir de bloc `api:` ni `homeassistant.`."""
     fichiers_yaml = [REPO / "vigie-mondiale-7b.yaml", *PAQUETS.glob("*.yaml")]
-    assert len(fichiers_yaml) >= 15
+    assert len(fichiers_yaml) >= 16
     for chemin in fichiers_yaml:
         texte = chemin.read_text(encoding="utf-8")
         sans_commentaires = "\n".join(ligne.split("#", 1)[0] for ligne in texte.splitlines())

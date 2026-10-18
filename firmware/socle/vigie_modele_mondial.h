@@ -2,9 +2,11 @@
  * ============================================================================
  * [AI-CONTEXT]
  * @file vigie_modele_mondial.h
- * @role Modèle de données C++ pur, géométrie sphérique (Haversine / Azimut) et
- *       décodeur GNSS NMEA 0183 ($GxGGA / $GxRMC) pour le terminal autonome
- *       Vigie Mondiale 7B (Waveshare ESP32-P4-WIFI6-Touch-LCD-7B).
+ * @role Modèle de données C++ pur, géométrie sphérique (Haversine / Azimut),
+ *       décodeur GNSS NMEA 0183 ($GxGGA / $GxRMC), décodeur de trame API
+ *       zéro-allocation, projection cartographique pixel Multi-Écrans
+ *       (Waveshare 7B 1024×600 & M5Stack Tab5 V2 1280×720), persistance NVS
+ *       CRC32 et logique de déclenchement d'urgence (DEFCON).
  * @architecture_constraint 100 % C++ standard pur, ZÉRO allocation dynamique
  *       (ni malloc, ni new, ni std::vector, ni std::string), aucune dépendance
  *       à ESPHome, ESP-IDF ou LVGL. Compilable et testable nativement sur PC
@@ -22,11 +24,16 @@ constexpr int kVigieMaxAlertes = 30;
 constexpr int kVigieMaxJoursPrevision = 10;
 constexpr int kVigieCreneaux15m = 4;
 constexpr int kVigieCreneaux5m = 12;
+constexpr int kVigieMaxAlertesAcquittees = 16;
 
 constexpr size_t kVigieIdMax = 32;
 constexpr size_t kVigieNomZoneMax = 48;
 constexpr size_t kVigieTitreAlerteMax = 96;
 constexpr size_t kVigieSourcesMax = 48;
+
+// Magic number "VIG1" (0x56494731) et version du bloc binaire NVS
+constexpr uint32_t kVigieNvsMagic = 0x56494731UL;
+constexpr uint16_t kVigieNvsVersion = 1;
 
 // ─── Énumérations métier (Catastrophes & Sévérités) ─────────────────────────
 
@@ -217,6 +224,44 @@ struct VigieEtatMondial {
     // Alertes catastrophes mondiales actives (jusqu'à 30 alertes triées par gravité/proximité)
     uint8_t nb_alertes = 0;
     VigieAlerteCatastrophe alertes[kVigieMaxAlertes] = {};
+
+    // Historique circulaire des identifiants d'alertes acquittées par l'opérateur (anti-répétition sonore)
+    uint8_t nb_acquittees = 0;
+    uint8_t curseur_acquittees = 0;
+    char alertes_acquittees[kVigieMaxAlertesAcquittees][kVigieIdMax] = {};
+};
+
+// ─── 7. Projection Cartographique Pixel, Bloc NVS & Décision d'Urgence ──────
+
+struct VigieCadreCarte {
+    int32_t x = 0;
+    int32_t y = 0;
+    int32_t largeur = 640;
+    int32_t hauteur = 360;
+};
+
+struct VigiePointPixel {
+    int32_t x = 0;
+    int32_t y = 0;
+    bool dans_cadre = false;
+};
+
+struct VigieBlocNvs {
+    uint32_t magic = 0;
+    uint16_t version = 0;
+    uint16_t taille_etat = 0;
+    uint32_t crc32 = 0;
+    VigieEtatMondial etat{};
+};
+
+struct VigieDecisionUrgence {
+    bool declencher = false;
+    bool reveiller_dalle = false;
+    bool alerte_sonore = false;
+    VigieSeverite severite = VigieSeverite::VERT;
+    int8_t alerte_idx = -1;
+    char alerte_id[kVigieIdMax] = "";
+    float distance_km = 0.0f;
 };
 
 // ─── Fonctions Pures C++ : Géométrie Sphérique, NMEA 0183 & Temps Réel ──────
@@ -264,6 +309,42 @@ VigieNiveauSolaire vigie_niveau_solaire_depuis_kp(float kp);
 // Réinitialise proprement l'état mondial complet (au démarrage du terminal).
 void vigie_initialiser_etat_mondial(VigieEtatMondial& etat);
 
+// ─── Nouvelles Fonctions Vague 2 : Décodeur API, Projection, NVS & Urgence ──
+
+// Décode sans allocation dynamique une trame compacte multi-lignes issue de `alerte_mondiale_api`
+// (enregistrements HEAD|..., ZONE|..., RAIN5M|..., DAY|..., HAZ|...), trie les alertes par
+// gravité et recalcule automatiquement les distances GPS et compteurs.
+bool vigie_decoder_trame_api(const char* trame, VigieEtatMondial& etat);
+
+// Retourne le cadre géométrique de la carte mondiale à l'écran pour la carte matérielle choisie
+// ("waveshare-7b" 1024×600 ou "tab5" 1280×720).
+VigieCadreCarte vigie_cadre_carte_ecran(const char* code_carte);
+
+// Projette une coordonnée géographique (lat_deg, lon_deg) en pixel (x, y) dans `cadre`
+// ou directement pour `code_carte` ("waveshare-7b" / "tab5").
+VigiePointPixel vigie_projeter_coord_carte(double lat_deg, double lon_deg, const VigieCadreCarte& cadre);
+VigiePointPixel vigie_projeter_coord_carte_ecran(double lat_deg, double lon_deg, const char* code_carte);
+
+// Calcule le CRC32 IEEE 802.3 (polynôme 0xEDB88320) sur un tampon mémoire quelconque.
+uint32_t vigie_nvs_calculer_crc32(const void* donnees, size_t taille);
+
+// Prépare un bloc binaire `VigieBlocNvs` signé (magic "VIG1", version, taille, CRC32) prêt à écrire en NVS.
+void vigie_preparer_bloc_nvs(const VigieEtatMondial& etat, VigieBlocNvs& bloc);
+
+// Vérifie l'intégrité (magic, version, taille, CRC32) d'un bloc NVS et restaure `etat` s'il est valide.
+bool vigie_restaurer_bloc_nvs(const VigieBlocNvs& bloc, VigieEtatMondial& etat);
+
+// Vérifie si l'identifiant d'alerte `id_alerte` a déjà été acquitté par l'opérateur.
+bool vigie_alerte_est_acquittee(const VigieEtatMondial& etat, const char* id_alerte);
+
+// Marque une alerte comme acquittée (anti-répétition du réveil d'écran et de la sirène).
+bool vigie_acquitter_alerte(VigieEtatMondial& etat, const char* id_alerte);
+
+// Évalue si l'état courant contient une nouvelle alerte critique non acquittée (ROUGE, ou ORANGE
+// dans le rayon de geofencing / avec alerte tsunami) exigeant le réveil de la dalle et l'alarme sonore.
+VigieDecisionUrgence vigie_evaluer_declenchement_alerte(
+    const VigieEtatMondial& etat,
+    float rayon_geofencing_orange_km = 1500.0f);
+
 // Instance globale statique de l'état mondial du terminal.
 extern VigieEtatMondial g_vigie_etat_mondial;
-

@@ -4,6 +4,20 @@
 
 ---
 
+## 📅 2026-10-18 (Vague 2) — Décodeur Trame API Zéro-Allocation, Projection Cartographique, Persistance NVS CRC32, Client API & Rendus Hors-Tablette (7B & Tab5)
+- **Décodeur de trame API & Projection Cartographique (`firmware/socle/vigie_modele_mondial.h/.cpp`)** :
+  - `vigie_decoder_trame_api()` : décodage déterministe sans allocation dynamique des enregistrements `HEAD|...`, `ZONE|...`, `RAIN5M|...`, `DAY|...` et `HAZ|...`, tri automatique par gravité (`ROUGE` > `ORANGE` > `JAUNE` > `VERT`) et recalcul immédiat des distances Haversine, azimuts et ETA Tsunami par rapport au fix GPS actif.
+  - `vigie_cadre_carte_ecran()` & `vigie_projeter_coord_carte()` : projection équirectangulaire pixel-perfect adaptée automatiquement aux résolutions `1024×600` (`waveshare-7b`) et `1280×720` (`tab5`).
+  - `vigie_nvs_calculer_crc32()`, `vigie_preparer_bloc_nvs()`, `vigie_restaurer_bloc_nvs()` : persistance binaire NVS signée par magic number `0x56494731` (`VIG1`) et CRC32 IEEE 802.3 (`0xEDB88320`).
+  - `vigie_evaluer_declenchement_alerte()` & `vigie_acquitter_alerte()` : détection d'urgence DEFCON (réveil dalle MIPI-DSI + alarme sonore sur alerte ROUGE ou ORANGE dans le rayon de geofencing / tsunami) avec anti-répétition par ID acquitté.
+- **Connecteur Client API (`firmware/ecran/vigie_client_api.h/.cpp` & `firmware/paquets/vigie-client-api.yaml`)** :
+  - Construction dynamique de l'URL `/v1/embedded/frame?device_type=<cible>&lat=...&lon=...&marine=1` dès qu'un fix GPS NMEA est valide, gestion du statut de fraîcheur (`LIVE · il y a Xs` vs `HORS-LIGNE · Cache NVS`).
+- **Générateur de Rendu Hors-Tablette Haute Fidélité (`tools/generer_rendu_ihm.py` & `docs/rendus/`)** :
+  - Génération des aperçus SVG et PNG pour **Waveshare 7B (`1024×600`)** (`docs/rendus/aperçu_waveshare_7b_1024x600.svg/.png`) et **M5Stack Tab5 V2 (`1280×720`)** (`docs/rendus/aperçu_m5stack_tab5_1280x720.svg/.png`).
+  - Suite `tests/test_socle_et_gps.py` étendue à **13/13 tests verts**.
+
+---
+
 ## 📅 2026-10-18 — Socle C++ Mondial, Parseur GPS NMEA 0183, Mode Marine & Architecture Multi-Écrans (`waveshare-7b` + `tab5`)
 - **Audits d'ingénierie consolidés** :
   - `docs/audits/BASE_CONNAISSANCE_WAVESHARE_7B.md` : synthèse exhaustive des 4 audits matériels 7B + architecture Multi-Écrans (`waveshare-7b` 1024×600 et `tab5` 1280×720).
