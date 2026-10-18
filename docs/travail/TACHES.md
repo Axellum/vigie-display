@@ -19,8 +19,12 @@
 ## Lot 3 — Client API Direct (HTTPS / REST Embarqué)
 - ✅ `#E07` — lot3 — **P0** — Implémenter `firmware/ecran/vigie_client_api.h/.cpp` et `firmware/paquets/vigie-client-api.yaml` (construction dynamique d'URL `/v1/embedded/frame` avec GPS/Marine, fraîcheur Live vs Cache NVS, déclenchement d'urgence) — dépend `#E05` et `#E06`.
 
-## Lot 4, 5 & 6 — Interface « Centre de Situation », Urgence DEFCON & Rendu Hors-Tablette
+## Lot 4, 5 & 6 — Interface « Centre de Situation », Urgence DEFCON, Audio RTTTL & Rendu Hors-Tablette
 - ✅ `#E08` — lot4 — **P0** — Concevoir la géométrie et la projection de l'écran principal Multi-Écrans (`1024×600` & `1280×720`) : Carte mondiale des risques actifs + Panneau Météo/Pluie 60 min/Marine + Ticker d'alertes Haversine — dépend `#E05`.
 - ✅ `#E09` — lot5 — **P0** — Implémenter la logique C++ du mode Urgence DEFCON (`vigie_evaluer_declenchement_alerte` + anti-répétition `vigie_acquitter_alerte`, réveil dalle + alerte sonore) — dépend `#E08`.
 - ✅ `#E10` — lot6 — **P0** — Créer le générateur de rendu hors-tablette PC (`tools/generer_rendu_ihm.py`) produisant les aperçus SVG/PNG en `1024×600` (`waveshare-7b`) et `1280×720` (`tab5`) dans `docs/rendus/` — dépend `#E08`.
+- ✅ `#E11` — lot2 — **P0** — Ajouter la vérification CRC32 de bout en bout `END|<CRC32_HEX8>` (`vigie_verifier_crc_trame_api`) dans `vigie_decoder_trame_api` pour rejeter toute trame tronquée sur le Wi-Fi sans corrompre `etat` — dépend `#E06`.
+- ✅ `#E12` — lot4/lot5 — **P0** — Créer le contrôleur IHM Multi-Écrans `firmware/ecran/vigie_ihm_controleur.h/.cpp` et le paquet `firmware/paquets/vigie-ihm-alertes.yaml` (navigation en rouleau des zones, préparation de la fiche détail avec `ETA ~XX min` Tsunami, et profils sonores RTTTL calibrés `<= 75 %` sur `ES8311`) — dépend `#E08` et `#E09`.
+- ✅ `#E13` — lot6 — **P0** — Générer les aperçus visuels haute fidélité du Popup d'Urgence Critique Tsunami / Séisme (DEFCON ROUGE) sur les 2 écrans (`aperçu_urgence_tsunami_7b_1024x600.svg/.png` et `aperçu_urgence_tsunami_tab5_1280x720.svg/.png`) — dépend `#E10` et `#E12`.
+
 

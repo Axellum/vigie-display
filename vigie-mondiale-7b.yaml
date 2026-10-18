@@ -44,6 +44,8 @@ esphome:
     - firmware/socle/vigie_modele_mondial.cpp
     - firmware/ecran/vigie_client_api.h
     - firmware/ecran/vigie_client_api.cpp
+    - firmware/ecran/vigie_ihm_controleur.h
+    - firmware/ecran/vigie_ihm_controleur.cpp
   on_boot:
     priority: 600
     then:
@@ -63,6 +65,7 @@ packages:
   alertes_audio: !include firmware/paquets/tab5-alertes.yaml
   gps_nmea: !include firmware/paquets/vigie-gps-nmea.yaml
   client_api: !include firmware/paquets/vigie-client-api.yaml
+  ihm_alertes: !include firmware/paquets/vigie-ihm-alertes.yaml
 
 logger:
   level: INFO

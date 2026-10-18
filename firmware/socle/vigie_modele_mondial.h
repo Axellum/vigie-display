@@ -309,10 +309,15 @@ VigieNiveauSolaire vigie_niveau_solaire_depuis_kp(float kp);
 // Réinitialise proprement l'état mondial complet (au démarrage du terminal).
 void vigie_initialiser_etat_mondial(VigieEtatMondial& etat);
 
-// ─── Nouvelles Fonctions Vague 2 : Décodeur API, Projection, NVS & Urgence ──
+// ─── Nouvelles Fonctions Vague 2 & 3 : Décodeur API (CRC32), Projection, NVS & Urgence ──
+
+// Vérifie l'intégrité optionnelle de fin de trame `END|<CRC32_HEX8>` :
+// calcule le CRC32 IEEE 802.3 sur tous les octets précédant `END|` (incluant le `\n` juste avant `END|`)
+// et le compare aux 8 caractères hexadécimaux. Renvoie false si le CRC32 est invalide ou tronqué.
+bool vigie_verifier_crc_trame_api(const char* trame);
 
 // Décode sans allocation dynamique une trame compacte multi-lignes issue de `alerte_mondiale_api`
-// (enregistrements HEAD|..., ZONE|..., RAIN5M|..., DAY|..., HAZ|...), trie les alertes par
+// (enregistrements HEAD|..., ZONE|..., RAIN5M|..., DAY|..., HAZ|..., END|<CRC32>), trie les alertes par
 // gravité et recalcule automatiquement les distances GPS et compteurs.
 bool vigie_decoder_trame_api(const char* trame, VigieEtatMondial& etat);
 

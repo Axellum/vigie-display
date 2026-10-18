@@ -4,6 +4,20 @@
 
 ---
 
+## 📅 2026-10-18 (Vague 3 — Lots 4 & 5) — Vérification CRC32 de Bout en Bout (`END|CRC32`), Contrôleur IHM Multi-Écrans, Fiche Détail Catastrophe, Séquenceur Audio RTTTL & Aperçus Urgence Tsunami (7B & Tab5)
+- **Vérification CRC32 de la trame API (`firmware/socle/vigie_modele_mondial.h/.cpp`)** :
+  - `vigie_verifier_crc_trame_api(trame)` : vérifie la signature finale `END|<CRC32_HEX8>` par calcul du CRC32 IEEE 802.3 (`vigie_nvs_calculer_crc32`) sur tous les octets précédant `END|` (incluant le `\n` précédent). Rejette toute trame tronquée ou altérée sur le Wi-Fi **avant** toute modification de `etat`.
+  - Support complet des codes normalisés bilingues (`EARTHQUAKE`/`SEISME`, `HURRICANE`/`OURAGAN`, `VOLCANO`/`VOLCAN`, `FLOOD`/`INONDATION`, `EXTREME_RAIN`/`PLUIE_EXTREME`, `WILDFIRE`/`FEU`, `SOLAR_STORM`/`TEMPETE_SOLAIRE`, `TORNADO`/`TORNADE`, `TSUNAMI` et sévérités `GREEN`/`VERT`, `YELLOW`/`JAUNE`, `ORANGE`, `RED`/`ROUGE`).
+- **Contrôleur IHM Multi-Écrans & Séquenceur Audio d'Urgence (`firmware/ecran/vigie_ihm_controleur.h/.cpp` & `firmware/paquets/vigie-ihm-alertes.yaml`)** :
+  - Navigation inter-zones en rouleau (`vigie_zone_suivante`, `vigie_zone_precedente`, `vigie_selectionner_zone_gps`) avec recalcul immédiat des distances et azimuts.
+  - Préparation de la fiche modale `VigieFicheDetailAlerte` (`vigie_preparer_fiche_detail_alerte`) : coordonnées DMS & nautiques, métrique principale par catégorie, distance en `km` et `NM`, relèvement `Cap °` + point cardinal, et compte à rebours `ETA ~XX min (Onde Tsunami)`.
+  - Profils sonores RTTTL calibrés (`vigie_profil_sonore_pour_alerte`) : Sirène Tsunami tri-ton, Alerte Sismique rapide, Alerte Ouragan/Grain marin, Alerte Volcan/Météo spatiale, avec plafond matériel strict `<= 75 %` (`kVigieVolumeMaxSecurisePct = 75`, `0 dB` sans saturation sur l'`ES8311` de la Waveshare 7B).
+- **Aperçus Visuels du Popup d'Urgence Critique Tsunami / Séisme (`tools/generer_rendu_ihm.py` & `docs/rendus/`)** :
+  - Génération des rendus SVG et PNG du Popup d'Urgence Critique DEFCON ROUGE : `docs/rendus/aperçu_urgence_tsunami_7b_1024x600.svg/.png` (`1024×600`) et `docs/rendus/aperçu_urgence_tsunami_tab5_1280x720.svg/.png` (`1280×720`).
+  - Suite `tests/test_socle_et_gps.py` étendue à **15/15 tests verts** (incluant la compilation C++ native de `vigie_ihm_controleur.cpp`).
+
+---
+
 ## 📅 2026-10-18 (Vague 2) — Décodeur Trame API Zéro-Allocation, Projection Cartographique, Persistance NVS CRC32, Client API & Rendus Hors-Tablette (7B & Tab5)
 - **Décodeur de trame API & Projection Cartographique (`firmware/socle/vigie_modele_mondial.h/.cpp`)** :
   - `vigie_decoder_trame_api()` : décodage déterministe sans allocation dynamique des enregistrements `HEAD|...`, `ZONE|...`, `RAIN5M|...`, `DAY|...` et `HAZ|...`, tri automatique par gravité (`ROUGE` > `ORANGE` > `JAUNE` > `VERT`) et recalcul immédiat des distances Haversine, azimuts et ETA Tsunami par rapport au fix GPS actif.

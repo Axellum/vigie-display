@@ -26,12 +26,14 @@ CIBLES = {
         "hauteur": 600,
         "nom_ecran": "Waveshare ESP32-P4 7B · 1024×600 · MIPI-DSI / RGB",
         "fichier_base": "aperçu_waveshare_7b_1024x600",
+        "fichier_urgence_base": "aperçu_urgence_tsunami_7b_1024x600",
     },
     "tab5": {
         "largeur": 1280,
         "hauteur": 720,
         "nom_ecran": "M5Stack Tab5 V2 · 1280×720 · MIPI-DSI + Grove GPS SMA",
         "fichier_base": "aperçu_m5stack_tab5_1280x720",
+        "fichier_urgence_base": "aperçu_urgence_tsunami_tab5_1280x720",
     },
 }
 
@@ -796,6 +798,323 @@ def generer_png_pillow(code_carte: str, cfg: dict, chemin_png: pathlib.Path) -> 
     return True
 
 
+def generer_svg_urgence_cible(code_carte: str, cfg: dict) -> str:
+    """Génère le SVG haute fidélité du Popup d'Urgence Critique Tsunami / Séisme (DEFCON ROUGE)."""
+    base_svg = generer_svg_cible(code_carte, cfg)
+    if base_svg.endswith("</svg>"):
+        base_svg = base_svg[:-6]
+
+    W = cfg["largeur"]
+    H = cfg["hauteur"]
+    sx = W / 1024.0
+    sy = H / 600.0
+    s_min = min(sx, sy)
+
+    def X(v: float) -> int:
+        return int(round(v * sx))
+
+    def Y(v: float) -> int:
+        return int(round(v * sy))
+
+    def S(v: float) -> int:
+        return max(9, int(round(v * s_min)))
+
+    mx, my, mw, mh = X(92), Y(58), X(840), Y(484)
+    c_w = (mw - X(56)) // 2
+    c_h = Y(96)
+
+    overlay = [
+        # Voile d'assombrissement tactique et liseré d'alarme rouge périphérique
+        f'<rect x="0" y="0" width="{W}" height="{H}" fill="#030712" fill-opacity="0.78"/>',
+        f'<rect x="{X(4)}" y="{Y(4)}" width="{W - X(8)}" height="{H - Y(8)}" rx="{S(14)}" '
+        f'fill="none" stroke="#EF4444" stroke-width="{S(4)}"/>',
+        # Modale centrale d'urgence DEFCON ROUGE
+        f'<rect x="{mx}" y="{my}" width="{mw}" height="{mh}" rx="{S(16)}" '
+        f'fill="#0F172A" stroke="#EF4444" stroke-width="{S(3)}"/>',
+        f'<rect x="{mx}" y="{my}" width="{mw}" height="{Y(58)}" rx="{S(16)}" fill="#DC2626"/>',
+        f'<text x="{mx + X(22)}" y="{my + Y(36)}" fill="#FFFFFF" font-family="Segoe UI, Roboto, sans-serif" '
+        f'font-size="{S(18)}" font-weight="bold">ALERTE ROUGE CRITIQUE — DANGER TSUNAMI &amp; SÉISME MAJEUR</text>',
+        # Badge Audio RTTTL calibré <= 75% (0 dB ES8311)
+        f'<rect x="{mx + mw - X(270)}" y="{my + Y(13)}" width="{X(250)}" height="{Y(32)}" rx="{S(8)}" '
+        f'fill="#7F1D1D" stroke="#FCA5A5" stroke-width="1.5"/>',
+        f'<text x="{mx + mw - X(145)}" y="{my + Y(34)}" text-anchor="middle" fill="#FEF2F2" '
+        f'font-family="Consolas, monospace" font-size="{S(11)}" font-weight="bold">SIRÈNE TRI-TON · VOL 75% (0 dB)</text>',
+        # Titre de la catastrophe et sources confirmées
+        f'<text x="{mx + X(24)}" y="{my + Y(92)}" fill="#F8FAFC" font-family="Segoe UI, Roboto, sans-serif" '
+        f'font-size="{S(19)}" font-weight="bold">Séisme M7.4 Fosse du Japon (Honshu) — Alerte Tsunami Pacifique</text>',
+        f'<text x="{mx + X(24)}" y="{my + Y(116)}" fill="#94A3B8" font-family="Consolas, monospace" '
+        f'font-size="{S(12)}">ID : USGS-JP-2026-74 · Sources : USGS, PTWC, JMA, GDACS · Trame END|CRC32 VALIDÉE</text>',
+        # 4 Cartes de télémétrie d'urgence
+        # Carte 1 : Coordonnées DMS & Nautiques
+        f'<rect x="{mx + X(20)}" y="{my + Y(134)}" width="{c_w}" height="{c_h}" rx="{S(10)}" '
+        f'fill="#1E293B" stroke="#475569" stroke-width="1.5"/>',
+        f'<text x="{mx + X(34)}" y="{my + Y(158)}" fill="#38BDF8" font-family="Segoe UI, sans-serif" '
+        f'font-size="{S(11)}" font-weight="bold">ÉPICENTRE (DMS &amp; NAUTIQUE)</text>',
+        f'<text x="{mx + X(34)}" y="{my + Y(186)}" fill="#F8FAFC" font-family="Consolas, monospace" '
+        f'font-size="{S(16)}" font-weight="bold">38°06\'00"N 142°51\'36"E</text>',
+        f'<text x="{mx + X(34)}" y="{my + Y(212)}" fill="#CBD5E1" font-family="Consolas, monospace" '
+        f'font-size="{S(12)}">Nautique : 38°06.00\'N 142°51.60\'E</text>',
+        # Carte 2 : Magnitude & Profondeur
+        f'<rect x="{mx + X(36) + c_w}" y="{my + Y(134)}" width="{c_w}" height="{c_h}" rx="{S(10)}" '
+        f'fill="#1E293B" stroke="#EF4444" stroke-width="1.5"/>',
+        f'<text x="{mx + X(50) + c_w}" y="{my + Y(158)}" fill="#FCA5A5" font-family="Segoe UI, sans-serif" '
+        f'font-size="{S(11)}" font-weight="bold">INTENSITÉ &amp; FOYER HYPOCENTRAL</text>',
+        f'<text x="{mx + X(50) + c_w}" y="{my + Y(186)}" fill="#FEF2F2" font-family="Consolas, monospace" '
+        f'font-size="{S(16)}" font-weight="bold">Mag 7.4 Mw · Prof. 32 km</text>',
+        f'<text x="{mx + X(50) + c_w}" y="{my + Y(212)}" fill="#FCA5A5" font-family="Segoe UI, sans-serif" '
+        f'font-size="{S(12)}">Subduction mégathrust tsunamigène</text>',
+        # Carte 3 : Distance km / NM & Relèvement Cap
+        f'<rect x="{mx + X(20)}" y="{my + Y(244)}" width="{c_w}" height="{c_h}" rx="{S(10)}" '
+        f'fill="#1E293B" stroke="#0284C7" stroke-width="1.5"/>',
+        f'<text x="{mx + X(34)}" y="{my + Y(268)}" fill="#38BDF8" font-family="Segoe UI, sans-serif" '
+        f'font-size="{S(11)}" font-weight="bold">DISTANCE &amp; RELÈVEMENT DEPUIS LE BATEAU</text>',
+        f'<text x="{mx + X(34)}" y="{my + Y(296)}" fill="#E0F2FE" font-family="Consolas, monospace" '
+        f'font-size="{S(16)}" font-weight="bold">9714 km (5245 NM) · Cap 033° NNE</text>',
+        f'<text x="{mx + X(34)}" y="{my + Y(322)}" fill="#94A3B8" font-family="Consolas, monospace" '
+        f'font-size="{S(12)}">Réf. GNSS : 48°51.39\'N 002°21.13\'E (Fix 3D)</text>',
+        # Carte 4 : Compte à rebours ETA Tsunami
+        f'<rect x="{mx + X(36) + c_w}" y="{my + Y(244)}" width="{c_w}" height="{c_h}" rx="{S(10)}" '
+        f'fill="#450A0A" stroke="#F59E0B" stroke-width="2"/>',
+        f'<text x="{mx + X(50) + c_w}" y="{my + Y(268)}" fill="#FDE68A" font-family="Segoe UI, sans-serif" '
+        f'font-size="{S(11)}" font-weight="bold">COMPTE À REBOURS ONDE TSUNAMI</text>',
+        f'<text x="{mx + X(50) + c_w}" y="{my + Y(300)}" fill="#FBBF24" font-family="Consolas, monospace" '
+        f'font-size="{S(22)}" font-weight="bold">ETA ~42 min (Onde Tsunami)</text>',
+        f'<text x="{mx + X(50) + c_w}" y="{my + Y(322)}" fill="#FECACA" font-family="Segoe UI, sans-serif" '
+        f'font-size="{S(12)}">Propagation océan profond ~700 km/h · Hs est. 2.8 m</text>',
+        # Bandeau de consigne de sécurité marine/côtière
+        f'<rect x="{mx + X(20)}" y="{my + Y(354)}" width="{mw - X(40)}" height="{Y(50)}" rx="{S(8)}" '
+        f'fill="#172554" stroke="#3B82F6" stroke-width="1.5"/>',
+        f'<text x="{mx + X(34)}" y="{my + Y(375)}" fill="#93C5FD" font-family="Segoe UI, sans-serif" '
+        f'font-size="{S(11)}" font-weight="bold">CONSIGNE TACTIQUE MARINE &amp; CÔTIÈRE :</text>',
+        f'<text x="{mx + X(34)}" y="{my + Y(394)}" fill="#F8FAFC" font-family="Segoe UI, sans-serif" '
+        f'font-size="{S(12)}">ALERTE TSUNAMI : Gagner les fonds &gt; 100 m au large (Cap 213° SSO) ou rejoindre un point haut &gt; 30 m immédiatement.</text>',
+        # Boutons tactiles d'acquittement et de navigation
+        f'<rect x="{mx + X(20)}" y="{my + Y(418)}" width="{X(510)}" height="{Y(48)}" rx="{S(10)}" '
+        f'fill="#16A34A" stroke="#86EFAC" stroke-width="2"/>',
+        f'<text x="{mx + X(275)}" y="{my + Y(447)}" text-anchor="middle" fill="#FFFFFF" '
+        f'font-family="Segoe UI, sans-serif" font-size="{S(14)}" font-weight="bold">ACQUITTER L\'URGENCE &amp; COUPER SIRÈNE (NVS ACK)</text>',
+        f'<rect x="{mx + X(546)}" y="{my + Y(418)}" width="{mw - X(566)}" height="{Y(48)}" rx="{S(10)}" '
+        f'fill="#1E293B" stroke="#38BDF8" stroke-width="1.5"/>',
+        f'<text x="{mx + X(546) + (mw - X(566)) // 2}" y="{my + Y(447)}" text-anchor="middle" fill="#38BDF8" '
+        f'font-family="Segoe UI, sans-serif" font-size="{S(13)}" font-weight="bold">CENTRER CARTE SUR ÉPICENTRE</text>',
+        "</svg>",
+    ]
+    return base_svg + "\n" + "\n".join(overlay)
+
+
+def generer_png_urgence_pillow(code_carte: str, cfg: dict, chemin_png_base: pathlib.Path, chemin_png_urgence: pathlib.Path) -> bool:
+    """Génère le PNG matriciel haute fidélité du Popup d'Urgence Critique Tsunami / Séisme (DEFCON ROUGE)."""
+    try:
+        from PIL import Image, ImageDraw
+    except ImportError:
+        return False
+
+    if not chemin_png_base.exists():
+        if not generer_png_pillow(code_carte, cfg, chemin_png_base):
+            return False
+
+    W = cfg["largeur"]
+    H = cfg["hauteur"]
+    sx = W / 1024.0
+    sy = H / 600.0
+    s_min = min(sx, sy)
+
+    def X(v: float) -> int:
+        return int(round(v * sx))
+
+    def Y(v: float) -> int:
+        return int(round(v * sy))
+
+    def S(v: float) -> int:
+        return max(9, int(round(v * s_min)))
+
+    f_hdr = _charger_police(["segoeuib.ttf", "arialbd.ttf"], S(17))
+    f_title = _charger_police(["segoeuib.ttf", "arialbd.ttf"], S(18))
+    f_eta = _charger_police(["consolab.ttf", "segoeuib.ttf"], S(21))
+    f_val = _charger_police(["consolab.ttf", "segoeuib.ttf"], S(15))
+    f_bold = _charger_police(["segoeuib.ttf", "arialbd.ttf"], S(11))
+    f_btn = _charger_police(["segoeuib.ttf", "arialbd.ttf"], S(13))
+    f_reg = _charger_police(["segoeui.ttf", "arial.ttf"], S(12))
+    f_mono = _charger_police(["consola.ttf", "segoeui.ttf"], S(11))
+
+    base_img = Image.open(chemin_png_base).convert("RGBA")
+    voile = Image.new("RGBA", (W, H), (3, 7, 18, 200))
+    img = Image.alpha_composite(base_img, voile).convert("RGB")
+    draw = ImageDraw.Draw(img)
+
+    # Liseré rouge d'urgence tout autour de la dalle
+    draw.rounded_rectangle(
+        [X(4), Y(4), W - X(4), H - Y(4)],
+        radius=S(14),
+        outline=(239, 68, 68),
+        width=max(3, S(4)),
+    )
+
+    mx, my, mw, mh = X(92), Y(58), X(840), Y(484)
+    c_w = (mw - X(56)) // 2
+    c_h = Y(96)
+
+    # Corps de la modale d'urgence
+    draw.rounded_rectangle(
+        [mx, my, mx + mw, my + mh],
+        radius=S(16),
+        fill=(15, 23, 42),
+        outline=(239, 68, 68),
+        width=max(2, S(3)),
+    )
+    # Bandeau supérieur rouge critique
+    draw.rounded_rectangle(
+        [mx, my, mx + mw, my + Y(58)],
+        radius=S(16),
+        fill=(220, 38, 38),
+        outline=(248, 113, 113),
+        width=1,
+    )
+    draw.text(
+        (mx + X(22), my + Y(16)),
+        "ALERTE ROUGE CRITIQUE — DANGER TSUNAMI & SÉISME MAJEUR",
+        font=f_hdr,
+        fill=(255, 255, 255),
+    )
+
+    # Badge Audio RTTTL calibré <= 75 % (0 dB ES8311)
+    draw.rounded_rectangle(
+        [mx + mw - X(272), my + Y(12), mx + mw - X(16), my + Y(46)],
+        radius=S(8),
+        fill=(127, 29, 29),
+        outline=(252, 165, 165),
+        width=2,
+    )
+    draw.text(
+        (mx + mw - X(260), my + Y(20)),
+        "SIRÈNE TRI-TON · VOL 75% (0 dB)",
+        font=f_bold,
+        fill=(254, 242, 242),
+    )
+
+    # Titre de l'alerte et sources confirmantes
+    draw.text(
+        (mx + X(24), my + Y(70)),
+        "Séisme M7.4 Fosse du Japon (Honshu) — Alerte Tsunami Pacifique",
+        font=f_title,
+        fill=(248, 250, 252),
+    )
+    draw.text(
+        (mx + X(24), my + Y(98)),
+        f"ID : USGS-JP-2026-74 · Sources : USGS, PTWC, JMA, GDACS · Trame END|CRC32 OK · {code_carte.upper()}",
+        font=f_mono,
+        fill=(148, 163, 184),
+    )
+
+    # Carte 1 : Coordonnées DMS & Nautiques
+    c1_x, c1_y = mx + X(20), my + Y(130)
+    draw.rounded_rectangle(
+        [c1_x, c1_y, c1_x + c_w, c1_y + c_h],
+        radius=S(10),
+        fill=(30, 41, 59),
+        outline=(71, 85, 105),
+        width=2,
+    )
+    draw.text((c1_x + X(14), c1_y + Y(10)), "ÉPICENTRE (COORDONNÉES DMS & NAUTIQUES)", font=f_bold, fill=(56, 189, 248))
+    draw.text((c1_x + X(14), c1_y + Y(34)), "38°06'00\"N 142°51'36\"E", font=f_val, fill=(248, 250, 252))
+    draw.text((c1_x + X(14), c1_y + Y(64)), "Format nautique : 38°06.00'N 142°51.60'E", font=f_mono, fill=(203, 213, 225))
+
+    # Carte 2 : Magnitude & Profondeur
+    c2_x, c2_y = mx + X(36) + c_w, my + Y(130)
+    draw.rounded_rectangle(
+        [c2_x, c2_y, c2_x + c_w, c2_y + c_h],
+        radius=S(10),
+        fill=(30, 41, 59),
+        outline=(239, 68, 68),
+        width=2,
+    )
+    draw.text((c2_x + X(14), c2_y + Y(10)), "INTENSITÉ & FOYER HYPOCENTRAL", font=f_bold, fill=(252, 165, 165))
+    draw.text((c2_x + X(14), c2_y + Y(34)), "Mag 7.4 Mw · Prof. 32 km", font=f_val, fill=(254, 242, 242))
+    draw.text((c2_x + X(14), c2_y + Y(64)), "Subduction mégathrust tsunamigène", font=f_reg, fill=(252, 165, 165))
+
+    # Carte 3 : Distance km / NM & Relèvement Cap
+    c3_x, c3_y = mx + X(20), my + Y(240)
+    draw.rounded_rectangle(
+        [c3_x, c3_y, c3_x + c_w, c3_y + c_h],
+        radius=S(10),
+        fill=(30, 41, 59),
+        outline=(2, 132, 199),
+        width=2,
+    )
+    draw.text((c3_x + X(14), c3_y + Y(10)), "DISTANCE & RELÈVEMENT DEPUIS LE BATEAU", font=f_bold, fill=(56, 189, 248))
+    draw.text((c3_x + X(14), c3_y + Y(34)), "9714 km (5245 NM) · Cap 033° NNE", font=f_val, fill=(224, 242, 254))
+    draw.text((c3_x + X(14), c3_y + Y(64)), "Réf. GNSS : 48°51.39'N 002°21.13'E (Fix 3D)", font=f_mono, fill=(148, 163, 184))
+
+    # Carte 4 : Compte à rebours ETA Tsunami
+    c4_x, c4_y = mx + X(36) + c_w, my + Y(240)
+    draw.rounded_rectangle(
+        [c4_x, c4_y, c4_x + c_w, c4_y + c_h],
+        radius=S(10),
+        fill=(69, 10, 10),
+        outline=(245, 158, 11),
+        width=2,
+    )
+    draw.text((c4_x + X(14), c4_y + Y(10)), "COMPTE À REBOURS ONDE TSUNAMI", font=f_bold, fill=(253, 230, 138))
+    draw.text((c4_x + X(14), c4_y + Y(32)), "ETA ~42 min (Onde Tsunami)", font=f_eta, fill=(251, 191, 36))
+    draw.text((c4_x + X(14), c4_y + Y(66)), "Propagation ~700 km/h · Hauteur est. 2.8 m", font=f_reg, fill=(254, 202, 202))
+
+    # Bandeau de consigne de sécurité marine/côtière
+    cons_y = my + Y(350)
+    draw.rounded_rectangle(
+        [mx + X(20), cons_y, mx + mw - X(20), cons_y + Y(52)],
+        radius=S(8),
+        fill=(23, 37, 84),
+        outline=(59, 130, 246),
+        width=2,
+    )
+    draw.text(
+        (mx + X(34), cons_y + Y(7)),
+        "CONSIGNE TACTIQUE MARINE & CÔTIÈRE :",
+        font=f_bold,
+        fill=(147, 197, 253),
+    )
+    draw.text(
+        (mx + X(34), cons_y + Y(26)),
+        "ALERTE TSUNAMI : Gagner les fonds > 100 m au large (Cap 213° SSO) ou rejoindre un point haut > 30 m immédiatement.",
+        font=f_reg,
+        fill=(248, 250, 252),
+    )
+
+    # Bouton principal d'acquittement
+    btn_y = my + Y(416)
+    draw.rounded_rectangle(
+        [mx + X(20), btn_y, mx + X(530), btn_y + Y(50)],
+        radius=S(10),
+        fill=(22, 163, 74),
+        outline=(134, 239, 172),
+        width=2,
+    )
+    draw.text(
+        (mx + X(60), btn_y + Y(15)),
+        "ACQUITTER L'URGENCE & COUPER SIRÈNE (NVS ACK)",
+        font=f_btn,
+        fill=(255, 255, 255),
+    )
+
+    # Bouton secondaire carte
+    draw.rounded_rectangle(
+        [mx + X(546), btn_y, mx + mw - X(20), btn_y + Y(50)],
+        radius=S(10),
+        fill=(30, 41, 59),
+        outline=(56, 189, 248),
+        width=2,
+    )
+    draw.text(
+        (mx + X(572), btn_y + Y(15)),
+        "CENTRER CARTE SUR ÉPICENTRE",
+        font=f_btn,
+        fill=(56, 189, 248),
+    )
+
+    img.save(chemin_png_urgence, format="PNG")
+    return True
+
+
 def generer_tous_les_rendus() -> list[pathlib.Path]:
     DOSSIER_RENDUS.mkdir(parents=True, exist_ok=True)
     fichiers_crees: list[pathlib.Path] = []
@@ -808,6 +1127,15 @@ def generer_tous_les_rendus() -> list[pathlib.Path]:
         chemin_png = DOSSIER_RENDUS / f"{cfg['fichier_base']}.png"
         if generer_png_pillow(code, cfg, chemin_png):
             fichiers_crees.append(chemin_png)
+
+        svg_urg_txt = generer_svg_urgence_cible(code, cfg)
+        chemin_svg_urg = DOSSIER_RENDUS / f"{cfg['fichier_urgence_base']}.svg"
+        chemin_svg_urg.write_text(svg_urg_txt, encoding="utf-8")
+        fichiers_crees.append(chemin_svg_urg)
+
+        chemin_png_urg = DOSSIER_RENDUS / f"{cfg['fichier_urgence_base']}.png"
+        if generer_png_urgence_pillow(code, cfg, chemin_png, chemin_png_urg):
+            fichiers_crees.append(chemin_png_urg)
     return fichiers_crees
 
 
@@ -815,3 +1143,4 @@ if __name__ == "__main__":
     crees = generer_tous_les_rendus()
     for p in crees:
         print(f"Rendu généré : {p}")
+
