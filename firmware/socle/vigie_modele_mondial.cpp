@@ -145,17 +145,20 @@ VigieCategorieAlerte decoder_categorie_alerte(const char* s) {
         return VigieCategorieAlerte::TSUNAMI;
     if (std::strcmp(s, "VOLCAN") == 0 || std::strcmp(s, "VO") == 0 || std::strcmp(s, "VOLCANO") == 0)
         return VigieCategorieAlerte::VOLCAN;
-    if (std::strcmp(s, "OURAGAN") == 0 || std::strcmp(s, "TC") == 0 || std::strcmp(s, "CYCLONE") == 0)
+    if (std::strcmp(s, "OURAGAN") == 0 || std::strcmp(s, "HURRICANE") == 0 ||
+        std::strcmp(s, "TC") == 0 || std::strcmp(s, "CYCLONE") == 0 || std::strcmp(s, "TYPHOON") == 0)
         return VigieCategorieAlerte::OURAGAN;
     if (std::strcmp(s, "TORNADE") == 0 || std::strcmp(s, "TO") == 0 || std::strcmp(s, "TORNADO") == 0)
         return VigieCategorieAlerte::TORNADE;
     if (std::strcmp(s, "INONDATION") == 0 || std::strcmp(s, "FL") == 0 || std::strcmp(s, "FLOOD") == 0)
         return VigieCategorieAlerte::INONDATION;
-    if (std::strcmp(s, "PLUIE_EXTREME") == 0 || std::strcmp(s, "RAIN") == 0)
+    if (std::strcmp(s, "PLUIE_EXTREME") == 0 || std::strcmp(s, "EXTREME_RAIN") == 0 || std::strcmp(s, "RAIN") == 0)
         return VigieCategorieAlerte::PLUIE_EXTREME;
-    if (std::strcmp(s, "FEU") == 0 || std::strcmp(s, "WF") == 0 || std::strcmp(s, "FIRE") == 0)
+    if (std::strcmp(s, "FEU") == 0 || std::strcmp(s, "WILDFIRE") == 0 ||
+        std::strcmp(s, "WF") == 0 || std::strcmp(s, "FIRE") == 0)
         return VigieCategorieAlerte::FEU;
-    if (std::strcmp(s, "TEMPETE_SOLAIRE") == 0 || std::strcmp(s, "SWPC") == 0 || std::strcmp(s, "SOLAR") == 0)
+    if (std::strcmp(s, "TEMPETE_SOLAIRE") == 0 || std::strcmp(s, "SOLAR_STORM") == 0 ||
+        std::strcmp(s, "SWPC") == 0 || std::strcmp(s, "SOLAR") == 0)
         return VigieCategorieAlerte::TEMPETE_SOLAIRE;
     return VigieCategorieAlerte::SEISME;
 }
@@ -171,6 +174,8 @@ VigieSeverite decoder_severite_alerte(const char* s) {
         return VigieSeverite::ORANGE;
     if (std::strcmp(s, "JAUNE") == 0 || std::strcmp(s, "YELLOW") == 0 || std::strcmp(s, "MODERATE") == 0)
         return VigieSeverite::JAUNE;
+    if (std::strcmp(s, "VERT") == 0 || std::strcmp(s, "GREEN") == 0 || std::strcmp(s, "MINOR") == 0)
+        return VigieSeverite::VERT;
     return VigieSeverite::VERT;
 }
 
@@ -557,11 +562,63 @@ void vigie_initialiser_etat_mondial(VigieEtatMondial& etat) {
 }
 
 // ============================================================================
-// VAGUE 2 : DÉCODEUR DE TRAME API, PROJECTION CARTE, NVS CRC32 & URGENCE
+// VAGUE 2 & 3 : DÉCODEUR DE TRAME API (CRC32), PROJECTION CARTE, NVS & URGENCE
 // ============================================================================
+
+bool vigie_verifier_crc_trame_api(const char* trame) {
+    if (trame == nullptr || trame[0] == '\0') {
+        return false;
+    }
+
+    const char* p = trame;
+    while (*p != '\0') {
+        const char* debut_ligne = p;
+        while (*debut_ligne == ' ' || *debut_ligne == '\t') {
+            ++debut_ligne;
+        }
+
+        if (std::strncmp(debut_ligne, "END", 3) == 0 &&
+            (debut_ligne[3] == '|' || debut_ligne[3] == '\0' ||
+             debut_ligne[3] == '\r' || debut_ligne[3] == '\n')) {
+            if (debut_ligne[3] != '|') {
+                return false;
+            }
+            uint32_t crc_attendu = 0;
+            for (int i = 0; i < 8; ++i) {
+                const int nib = hex_nibble(debut_ligne[4 + i]);
+                if (nib < 0) {
+                    return false;
+                }
+                crc_attendu = (crc_attendu << 4) | static_cast<uint32_t>(nib);
+            }
+            const char apres = debut_ligne[12];
+            if (apres != '\0' && apres != '\r' && apres != '\n' && apres != ' ' && apres != '\t') {
+                return false;
+            }
+
+            // Tous les octets précédant le début de la ligne `END|` (incluant le `\n` juste avant)
+            const size_t nb_octets = static_cast<size_t>(p - trame);
+            const uint32_t crc_calc = vigie_nvs_calculer_crc32(trame, nb_octets);
+            return crc_calc == crc_attendu;
+        }
+
+        while (*p != '\0' && *p != '\n') {
+            ++p;
+        }
+        if (*p == '\n') {
+            ++p;
+        }
+    }
+
+    // Pas de ligne END| : la trame est acceptée (mode non signé / rétrocompatible)
+    return true;
+}
 
 bool vigie_decoder_trame_api(const char* trame, VigieEtatMondial& etat) {
     if (trame == nullptr || trame[0] == '\0') {
+        return false;
+    }
+    if (!vigie_verifier_crc_trame_api(trame)) {
         return false;
     }
 
@@ -598,6 +655,10 @@ bool vigie_decoder_trame_api(const char* trame, VigieEtatMondial& etat) {
         if (nb < 2) continue;
 
         const char* tag = champs[0];
+
+        if (std::strcmp(tag, "END") == 0) {
+            break;
+        }
 
         if (std::strcmp(tag, "HEAD") == 0 || std::strcmp(tag, "VIGIE1") == 0) {
             // HEAD|<timestamp_utc>|<kp>|[zone_active_idx]

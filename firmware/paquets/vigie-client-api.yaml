@@ -57,6 +57,10 @@ script:
             if (urgence.declencher) {
               ESP_LOGW("vigie_api", "URGENCE DÉTECTÉE (%s — %.1f km) : réveil écran & alerte sonore",
                        urgence.alerte_id, urgence.distance_km);
+              if (vigie_ihm_declencher_popup_urgence(g_vigie_etat_mondial, urgence, g_vigie_etat_ihm)) {
+                id(vigie_popup_urgence_actif).publish_state(true);
+                id(vigie_action_jouer_alerte_sonore).execute();
+              }
               if (urgence.reveiller_dalle) {
                 id(backlight).turn_on().perform();
               }
