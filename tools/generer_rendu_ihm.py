@@ -418,8 +418,22 @@ def generer_svg_cible(code_carte: str, cfg: dict) -> str:
     return "\n".join(lignes)
 
 
+def _charger_police(noms: list[str], taille: int):
+    from PIL import ImageFont
+
+    dossier_fonts = pathlib.Path("C:/Windows/Fonts")
+    for nom in noms:
+        chemin = dossier_fonts / nom
+        if chemin.exists():
+            try:
+                return ImageFont.truetype(str(chemin), taille)
+            except Exception:
+                pass
+    return ImageFont.load_default()
+
+
 def generer_png_pillow(code_carte: str, cfg: dict, chemin_png: pathlib.Path) -> bool:
-    """Génère également un aperçu PNG matriciel si Pillow (PIL) est installé."""
+    """Génère un aperçu PNG matriciel haute fidélité avec polices TrueType Unicode."""
     try:
         from PIL import Image, ImageDraw
     except ImportError:
@@ -429,6 +443,7 @@ def generer_png_pillow(code_carte: str, cfg: dict, chemin_png: pathlib.Path) -> 
     H = cfg["hauteur"]
     sx = W / 1024.0
     sy = H / 600.0
+    s_min = min(sx, sy)
 
     def X(v: float) -> int:
         return int(round(v * sx))
@@ -436,7 +451,19 @@ def generer_png_pillow(code_carte: str, cfg: dict, chemin_png: pathlib.Path) -> 
     def Y(v: float) -> int:
         return int(round(v * sy))
 
-    img = Image.new("RGB", (W, H), (11, 17, 30))
+    def S(v: float) -> int:
+        return max(9, int(round(v * s_min)))
+
+    f_title = _charger_police(["segoeuib.ttf", "arialbd.ttf"], S(14))
+    f_big_temp = _charger_police(["segoeuib.ttf", "arialbd.ttf"], S(28))
+    f_med_bold = _charger_police(["segoeuib.ttf", "arialbd.ttf"], S(15))
+    f_bold = _charger_police(["segoeuib.ttf", "arialbd.ttf"], S(11))
+    f_reg = _charger_police(["segoeui.ttf", "arial.ttf"], S(11))
+    f_small = _charger_police(["segoeui.ttf", "arial.ttf"], S(10))
+    f_mono = _charger_police(["consolab.ttf", "consola.ttf"], S(11))
+    f_mono_sm = _charger_police(["consola.ttf", "segoeui.ttf"], S(9))
+
+    img = Image.new("RGB", (W, H), (8, 13, 24))
     draw = ImageDraw.Draw(img)
 
     map_x = (16 * W + 512) // 1024
@@ -449,43 +476,321 @@ def generer_png_pillow(code_carte: str, cfg: dict, chemin_png: pathlib.Path) -> 
     bot_w = W - 2 * map_x
     bot_h = H - bot_y - Y(12)
 
-    # Bandeau haut, Carte, Panneau Météo/Marine, Ticker bas
-    draw.rounded_rectangle([map_x, Y(10), map_x + bot_w, Y(56)], radius=8, fill=(24, 34, 52), outline=(51, 65, 85), width=2)
-    draw.rounded_rectangle([map_x, map_y, map_x + map_w, map_y + map_h], radius=10, fill=(9, 22, 42), outline=(30, 58, 95), width=2)
-    draw.rounded_rectangle([right_x, map_y, right_x + right_w, map_y + map_h], radius=10, fill=(24, 34, 52), outline=(51, 65, 85), width=2)
-    draw.rounded_rectangle([map_x, bot_y, map_x + bot_w, bot_y + bot_h], radius=10, fill=(24, 34, 52), outline=(51, 65, 85), width=2)
+    # 1. BANDEAU SUPÉRIEUR
+    hdr_y, hdr_h = Y(10), Y(46)
+    draw.rounded_rectangle(
+        [map_x, hdr_y, map_x + bot_w, hdr_y + hdr_h],
+        radius=S(10),
+        fill=(18, 27, 44),
+        outline=(51, 65, 85),
+        width=2,
+    )
+    draw.text(
+        (map_x + X(14), hdr_y + Y(6)),
+        f"{SCENARIO['heure_utc']} · {SCENARIO['heure_locale']}",
+        font=f_title,
+        fill=(248, 250, 252),
+    )
+    draw.ellipse(
+        [map_x + X(14), hdr_y + Y(30), map_x + X(22), hdr_y + Y(38)],
+        fill=(16, 185, 129),
+    )
+    draw.text(
+        (map_x + X(26), hdr_y + Y(26)),
+        f"{SCENARIO['statut_api']} · {code_carte.upper()} ({W}×{H})",
+        font=f_small,
+        fill=(52, 211, 153),
+    )
+
+    # Encadré GPS Nautique
+    gps_x = map_x + X(340)
+    gps_w = X(370)
+    draw.rounded_rectangle(
+        [gps_x, hdr_y + Y(5), gps_x + gps_w, hdr_y + hdr_h - Y(5)],
+        radius=S(6),
+        fill=(11, 25, 44),
+        outline=(2, 132, 199),
+        width=1,
+    )
+    draw.text(
+        (gps_x + X(10), hdr_y + Y(8)),
+        "GNSS NMEA 0183 · FIX 3D (11 SAT · HDOP 0.8)",
+        font=f_mono_sm,
+        fill=(56, 189, 248),
+    )
+    draw.text(
+        (gps_x + X(10), hdr_y + Y(23)),
+        SCENARIO["gps_nautique"],
+        font=f_mono,
+        fill=(224, 242, 254),
+    )
+
+    # Badges DEFCON Rouge / Orange / Jaune + Kp Solaire
+    bx_badge = map_x + bot_w - X(270)
+    for bg_col, border_col, label in [
+        ((127, 29, 29), (252, 165, 165), f"ROUGE {SCENARIO['defcon_rouges']}"),
+        ((120, 53, 15), (253, 230, 138), f"ORANGE {SCENARIO['defcon_oranges']}"),
+        ((113, 63, 18), (254, 240, 138), f"JAUNE {SCENARIO['defcon_jaunes']}"),
+    ]:
+        draw.rounded_rectangle(
+            [bx_badge, hdr_y + Y(6), bx_badge + X(82), hdr_y + Y(24)],
+            radius=S(5),
+            fill=bg_col,
+            outline=border_col,
+            width=1,
+        )
+        draw.text((bx_badge + X(10), hdr_y + Y(8)), label, font=f_small, fill=border_col)
+        bx_badge += X(88)
+
+    draw.text(
+        (map_x + bot_w - X(270), hdr_y + Y(27)),
+        f"MÉTÉO SPATIALE : {SCENARIO['kp_label']}",
+        font=f_bold,
+        fill=(192, 132, 252),
+    )
+
+    # 2. CARTE MONDIALE DES RISQUES & NAVIGATION MARINE
+    draw.rounded_rectangle(
+        [map_x, map_y, map_x + map_w, map_y + map_h],
+        radius=S(12),
+        fill=(9, 22, 42),
+        outline=(30, 58, 95),
+        width=2,
+    )
+    # Grille de méridiens et parallèles
+    for lon_g in range(-150, 180, 30):
+        gx, _ = projeter_coord(0.0, float(lon_g), map_x, map_y, map_w, map_h)
+        col_g = (30, 58, 95) if lon_g == 0 else (18, 38, 64)
+        draw.line([(gx, map_y + 2), (gx, map_y + map_h - 2)], fill=col_g, width=1)
+    for lat_g in (-60, -30, 0, 30, 60):
+        _, gy = projeter_coord(float(lat_g), 0.0, map_x, map_y, map_w, map_h)
+        col_g = (30, 58, 95) if lat_g == 0 else (18, 38, 64)
+        draw.line([(map_x + 2, gy), (map_x + map_w - 2, gy)], fill=col_g, width=1)
 
     # Continents
     for poly in CONTINENTS_LON_LAT:
         pts = [projeter_coord(lat, lon, map_x, map_y, map_w, map_h) for lon, lat in poly]
-        draw.polygon(pts, fill=(30, 41, 59), outline=(51, 65, 85))
+        draw.polygon(pts, fill=(30, 41, 59), outline=(71, 85, 105))
 
     # Bateau et alertes sur la carte
     bx, by = projeter_coord(SCENARIO["gps_lat"], SCENARIO["gps_lon"], map_x, map_y, map_w, map_h)
     for al in SCENARIO["alertes"]:
         ax, ay = projeter_coord(al["lat"], al["lon"], map_x, map_y, map_w, map_h)
         col = (239, 68, 68) if al["severite"] == "ROUGE" else (245, 158, 11)
-        draw.line([(bx, by), (ax, ay)], fill=col, width=1)
-        for r in (18, 11, 5):
+        draw.line([(bx, by), (ax, ay)], fill=col, width=2)
+        for r in (S(22), S(14), S(6)):
             draw.ellipse([ax - r, ay - r, ax + r, ay + r], outline=col, width=2)
-    draw.ellipse([bx - 6, by - 6, bx + 6, by + 6], fill=(56, 189, 248), outline=(255, 255, 255), width=2)
-
-    # Textes clés
-    draw.text((map_x + X(14), Y(18)), f"{SCENARIO['heure_utc']} | {SCENARIO['gps_nautique']}", fill=(248, 250, 252))
-    draw.text((map_x + X(14), Y(36)), f"{cfg['nom_ecran']} | {SCENARIO['kp_label']}", fill=(56, 189, 248))
-    za = SCENARIO["zone_active"]
-    draw.text((right_x + X(14), map_y + Y(16)), f"{za['nom']} : {za['temp_c']} C", fill=(248, 250, 252))
-    draw.text((right_x + X(14), map_y + Y(40)), f"Pluie : {za['pluie_msg']}", fill=(147, 197, 253))
-    draw.text((right_x + X(14), map_y + Y(70)), f"Mer : Hs {za['marin']['vagues_m']}m Tp {za['marin']['periode_s']}s", fill=(45, 212, 191))
-
-    ty = bot_y + Y(24)
-    for al in SCENARIO["alertes"]:
+        lbl_txt = f"{al['categorie']} · {al['valeur']}"
+        lbl_x = ax - X(175) if ax > map_x + map_w - X(150) else ax + X(12)
         draw.text(
-            (map_x + X(16), ty),
-            f"[{al['severite']}] {al['categorie']} - {al['titre']} ({al['dist_km']} km / {al['dist_nm']} NM {al['cardinal']})",
+            (lbl_x, ay - Y(16)),
+            lbl_txt,
+            font=f_small,
             fill=(248, 250, 252),
         )
-        ty += Y(36)
+
+    # Marqueur Bateau GPS
+    draw.ellipse([bx - S(11), by - S(11), bx + S(11), by + S(11)], outline=(56, 189, 248), width=2)
+    draw.ellipse([bx - S(5), by - S(5), bx + S(5), by + S(5)], fill=(56, 189, 248), outline=(255, 255, 255), width=2)
+    draw.text((bx + X(12), by - Y(6)), "NAVIRE GPS (48°51'N)", font=f_mono_sm, fill=(56, 189, 248))
+
+    # Titre incrusté en haut de la carte
+    draw.rounded_rectangle(
+        [map_x + X(10), map_y + Y(8), map_x + X(365), map_y + Y(30)],
+        radius=S(5),
+        fill=(15, 23, 42),
+        outline=(51, 65, 85),
+        width=1,
+    )
+    draw.text(
+        (map_x + X(18), map_y + Y(11)),
+        "CARTE MONDIALE DES RISQUES & RELÈVEMENTS NAUTIQUES",
+        font=f_bold,
+        fill=(226, 232, 240),
+    )
+
+    # 3. PANNEAU MÉTÉO LOCALE, RADAR PLUIE 60 MIN & ÉTAT DE LA MER
+    draw.rounded_rectangle(
+        [right_x, map_y, right_x + right_w, map_y + map_h],
+        radius=S(12),
+        fill=(18, 27, 44),
+        outline=(51, 65, 85),
+        width=2,
+    )
+    za = SCENARIO["zone_active"]
+    draw.text(
+        (right_x + X(14), map_y + Y(10)),
+        f"ZONE 0 (GPS) · {za['nom']}",
+        font=f_bold,
+        fill=(56, 189, 248),
+    )
+    draw.text(
+        (right_x + X(14), map_y + Y(26)),
+        f"{za['temp_c']:.1f}°C",
+        font=f_big_temp,
+        fill=(248, 250, 252),
+    )
+    draw.text(
+        (right_x + X(130), map_y + Y(30)),
+        f"Ressenti {za['ressenti_c']:.1f}°C · Hum {za['humidite_pct']}%",
+        font=f_small,
+        fill=(148, 163, 184),
+    )
+    draw.text(
+        (right_x + X(130), map_y + Y(46)),
+        f"Pression {za['pression_hpa']:.1f} hPa · UV {za['uv']}",
+        font=f_bold,
+        fill=(226, 232, 240),
+    )
+    draw.text(
+        (right_x + X(14), map_y + Y(66)),
+        za["condition"],
+        font=f_bold,
+        fill=(253, 230, 138),
+    )
+    draw.text(
+        (right_x + X(14), map_y + Y(84)),
+        f"Vent {za['vent_kt']} kt (Raf. {za['rafales_kt']} kt) · {za['vent_dir']}",
+        font=f_mono,
+        fill=(203, 213, 225),
+    )
+
+    # Sous-carte Radar Pluie 60 min (Histogramme 12 barres)
+    rain_y = map_y + Y(106)
+    rain_h = Y(112)
+    draw.rounded_rectangle(
+        [right_x + X(10), rain_y, right_x + right_w - X(10), rain_y + rain_h],
+        radius=S(8),
+        fill=(11, 21, 40),
+        outline=(30, 58, 95),
+        width=1,
+    )
+    draw.text(
+        (right_x + X(18), rain_y + Y(6)),
+        "NOWCAST PLUIE 60 MIN (PRÉCISION COORDONNÉE GPS)",
+        font=f_bold,
+        fill=(56, 189, 248),
+    )
+    draw.text(
+        (right_x + X(18), rain_y + Y(22)),
+        za["pluie_msg"],
+        font=f_small,
+        fill=(147, 197, 253),
+    )
+    bar_x0 = right_x + X(20)
+    bar_w = max(8, (right_w - X(44)) // 12 - X(4))
+    bar_step = (right_w - X(40)) // 12
+    bar_base_y = rain_y + rain_h - Y(18)
+    max_bar_h = Y(50)
+    for idx_b, val_mm in enumerate(za["pluie_5m"]):
+        bh = max(3, int(round((val_mm / 9.0) * max_bar_h)))
+        bx_bar = bar_x0 + idx_b * bar_step
+        b_col = (56, 189, 248) if val_mm < 4.0 else ((245, 158, 11) if val_mm < 7.0 else (239, 68, 68))
+        draw.rounded_rectangle(
+            [bx_bar, bar_base_y - bh, bx_bar + bar_w, bar_base_y],
+            radius=2,
+            fill=b_col,
+        )
+        if idx_b % 2 == 0:
+            draw.text(
+                (bx_bar, bar_base_y + Y(2)),
+                f"+{idx_b * 5}m",
+                font=f_mono_sm,
+                fill=(100, 116, 139),
+            )
+
+    # Sous-carte État de la Mer & Houle (Mode Marine)
+    sea_y = rain_y + rain_h + Y(8)
+    sea_h = map_h - (sea_y - map_y) - Y(10)
+    marin = za["marin"]
+    draw.rounded_rectangle(
+        [right_x + X(10), sea_y, right_x + right_w - X(10), sea_y + sea_h],
+        radius=S(8),
+        fill=(9, 30, 38),
+        outline=(13, 148, 136),
+        width=1,
+    )
+    draw.text(
+        (right_x + X(18), sea_y + Y(7)),
+        "ÉTAT DE LA MER & HOULE (MODE MARINE)",
+        font=f_bold,
+        fill=(45, 212, 191),
+    )
+    draw.text(
+        (right_x + X(18), sea_y + Y(26)),
+        f"Hs {marin['vagues_m']} m · Tp {marin['periode_s']} s ({marin['dir_vagues']})",
+        font=f_med_bold,
+        fill=(248, 250, 252),
+    )
+    draw.text(
+        (right_x + X(18), sea_y + Y(50)),
+        f"Houle primaire : {marin['houle_m']} m · Courant : {marin['courant_kt']} kt",
+        font=f_reg,
+        fill=(153, 246, 228),
+    )
+    draw.text(
+        (right_x + X(18), sea_y + Y(68)),
+        f"Échelle Douglas : {marin['douglas']}",
+        font=f_bold,
+        fill=(253, 230, 138),
+    )
+
+    # 4. TICKER D'ALERTES CATASTROPHES & RELÈVEMENTS HAVERSINE TEMPS RÉEL
+    draw.rounded_rectangle(
+        [map_x, bot_y, map_x + bot_w, bot_y + bot_h],
+        radius=S(12),
+        fill=(18, 27, 44),
+        outline=(51, 65, 85),
+        width=2,
+    )
+    draw.text(
+        (map_x + X(14), bot_y + Y(7)),
+        "ALERTES CATASTROPHES MONDIALES ACTIVES (TRIÉES PAR CRITICITÉ & PROXIMITÉ HAVERSINE)",
+        font=f_bold,
+        fill=(248, 250, 252),
+    )
+
+    row_y = bot_y + Y(28)
+    row_h = (bot_h - Y(34)) // 3
+    for al in SCENARIO["alertes"]:
+        col = (239, 68, 68) if al["severite"] == "ROUGE" else (245, 158, 11)
+        draw.rounded_rectangle(
+            [map_x + X(12), row_y, map_x + bot_w - X(12), row_y + row_h - Y(4)],
+            radius=S(6),
+            fill=(15, 23, 42),
+            outline=col,
+            width=1,
+        )
+        draw.rounded_rectangle(
+            [map_x + X(12), row_y, map_x + X(100), row_y + row_h - Y(4)],
+            radius=S(6),
+            fill=col,
+        )
+        draw.text(
+            (map_x + X(22), row_y + Y(10)),
+            al["categorie"],
+            font=f_bold,
+            fill=(15, 23, 42),
+        )
+        draw.text(
+            (map_x + X(112), row_y + Y(3)),
+            al["titre"],
+            font=f_bold,
+            fill=(248, 250, 252),
+        )
+        draw.text(
+            (map_x + X(112), row_y + Y(19)),
+            f"Sources : {al['source']} · Intensité : {al['valeur']}",
+            font=f_small,
+            fill=(148, 163, 184),
+        )
+        draw.text(
+            (map_x + bot_w - X(310), row_y + Y(10)),
+            f"Dist. {al['dist_km']} km ({al['dist_nm']} NM) · Cap {al['azimut']:03d}° ({al['cardinal']})",
+            font=f_mono,
+            fill=(56, 189, 248),
+        )
+        row_y += row_h
 
     img.save(chemin_png, format="PNG")
     return True
