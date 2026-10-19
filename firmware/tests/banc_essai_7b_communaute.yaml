@@ -1,0 +1,224 @@
+# ============================================================================
+# Banc d'Essai Autonome — Waveshare ESP32-P4-WIFI6-Touch-LCD-7B
+# Validation Audio (ES8311 + ES7210 + NS4150B), DSI EK79007, GT911,
+# Diagnostic Heap & Batterie pour retours communautaires GitHub
+# ============================================================================
+
+substitutions:
+  nom_appareil: "banc-essai-7b"
+  nom_convivial: "Banc d'Essai Waveshare 7B"
+
+esphome:
+  name: ${nom_appareil}
+  friendly_name: ${nom_convivial}
+  min_version: 2026.9.1
+
+esp32:
+  variant: esp32p4
+  engineering_sample: false
+  cpu_frequency: 400MHz
+  flash_size: 32MB
+  framework:
+    type: esp-idf
+    advanced:
+      enable_idf_experimental_features: true
+      execute_from_psram: true
+      compiler_optimization: PERF
+    sdkconfig_options:
+      CONFIG_SPI_FLASH_YIELD_DURING_ERASE: "y"
+      CONFIG_SPIRAM_ALLOW_BSS_SEG_EXTERNAL_MEMORY: "y"
+      CONFIG_CACHE_L2_CACHE_256KB: "y"
+
+psram:
+  mode: hex
+  speed: 200MHz
+
+# LDO canal 3 obligatoire pour alimenter le PHY DSI à 2,5 V
+esp_ldo:
+  - voltage: 2.5V
+    channel: 3
+
+# Coprocesseur Wi-Fi 6 ESP32-C6 sur SDIO Slot 1
+esp32_hosted:
+  variant: esp32c6
+  active_high: true
+  clk_pin: GPIO18
+  cmd_pin: GPIO19
+  d0_pin: GPIO14
+  d1_pin: GPIO15
+  d2_pin: GPIO16
+  d3_pin: GPIO17
+  reset_pin: GPIO54
+  slot: 1
+  sdio_frequency: 20MHz
+  use_psram: true
+
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+
+logger:
+  level: INFO
+  hardware_uart: USB_SERIAL_JTAG
+
+api:
+
+ota:
+  - platform: esphome
+
+# ─── I2C & Dalle MIPI-DSI ───────────────────────────────────────────────────
+
+i2c:
+  - id: bsp_bus
+    sda: GPIO7
+    scl: GPIO8
+    frequency: 400kHz
+
+display:
+  - id: dalle_7b
+    platform: mipi_dsi
+    model: WAVESHARE-ESP32-P4-WIFI6-TOUCH-LCD-7B
+    dimensions:
+      width: 1024
+      height: 600
+    pixel_mode: 16bit
+    color_order: RGB
+    update_interval: never
+    auto_clear_enabled: false
+
+touchscreen:
+  - id: tactile_gt911
+    platform: gt911
+    reset_pin: GPIO23
+    update_interval: 50ms
+    transform:
+      swap_xy: false
+      mirror_x: true
+      mirror_y: true
+
+# Rétroéclairage PWM (AP3032 inversé @ 5 kHz)
+output:
+  - platform: ledc
+    id: sortie_retro
+    pin:
+      number: GPIO32
+      inverted: true
+    frequency: 5000Hz
+
+light:
+  - platform: monochromatic
+    output: sortie_retro
+    name: "Rétroéclairage"
+    id: retroeclairage
+    restore_mode: ALWAYS_ON
+
+# ─── Audio : ES8311 DAC + NS4150B Ampli (GPIO53) + ES7210 ADC Micros ────────
+
+i2s_audio:
+  - id: bus_audio_i2s
+    i2s_lrclk_pin: GPIO10
+    i2s_bclk_pin: GPIO12
+    i2s_mclk_pin: GPIO13
+
+# DAC ES8311 (Sortie haut-parleur)
+audio_dac:
+  - platform: es8311
+    id: dac_es8311
+
+speaker:
+  - platform: i2s_audio
+    id: hp_7b
+    i2s_dout_pin: GPIO9
+    audio_dac: dac_es8311
+    dac_type: external
+    channel: mono
+    buffer_duration: 500ms
+    bits_per_sample: 16bit
+    sample_rate: 48000
+
+# Commande matérielle de l'amplificateur Classe D (GPIO53 actif HAUT)
+switch:
+  - platform: gpio
+    id: ampli_audio_ns4150b
+    name: "Amplificateur HP (GPIO53)"
+    pin: GPIO53
+    restore_mode: ALWAYS_ON
+
+# Lecteur média avec plafonnement 75% (= 0 dB unitaire dans REG32 de l'ES8311)
+media_player:
+  - platform: speaker
+    name: "Audio 7B (ES8311)"
+    id: lecteur_audio
+    volume_max: 75%
+    announcement_pipeline:
+      speaker: hp_7b
+      format: FLAC
+      sample_rate: 24000
+      num_channels: 1
+
+# ADC ES7210 (Double Microphone avec boucle AEC sur MIC3)
+audio_adc:
+  - platform: es7210
+    id: adc_es7210
+    bits_per_sample: 16bit
+    sample_rate: 16000
+    mic_gain: 30dB
+
+microphone:
+  - platform: i2s_audio
+    id: micros_7b
+    i2s_din_pin: GPIO11
+    sample_rate: 16000
+    bits_per_sample: 16bit
+    adc_type: external
+    correct_dc_offset: true
+
+# ─── Télémétrie, Mémoire Heap & Batterie ────────────────────────────────────
+
+sensor:
+  # Diagnostic de fuite mémoire Heap (réponse pour homeassistant_espscreen)
+  - platform: template
+    name: "Heap Libre Interne"
+    id: heap_interne
+    unit_of_measurement: "Ko"
+    accuracy_decimals: 1
+    update_interval: 5s
+    lambda: 'return esp_get_free_internal_heap_size() / 1024.0f;'
+
+  - platform: template
+    name: "PSRAM Libre"
+    id: psram_libre
+    unit_of_measurement: "Mo"
+    accuracy_decimals: 2
+    update_interval: 5s
+    lambda: 'return heap_caps_get_free_size(MALLOC_CAP_SPIRAM) / (1024.0f * 1024.0f);'
+
+  # Mesure de tension batterie sur GPIO20 (pont 200k/100k -> x3)
+  - platform: adc
+    pin: GPIO20
+    name: "Tension Batterie (GPIO20)"
+    id: tension_batterie
+    update_interval: 30s
+    attenuation: 12db
+    filters:
+      - multiply: 3.0
+
+# ─── Boutons de Test Audio & Système ───────────────────────────────────────
+
+button:
+  - platform: template
+    name: "Test Audio : Pause / Play"
+    on_press:
+      then:
+        - media_player.toggle: lecteur_audio
+
+  - platform: template
+    name: "Test Audio : Volume Max Sécurisé (75%)"
+    on_press:
+      then:
+        - media_player.volume_set:
+            id: lecteur_audio
+            volume: 100%
+
+  - platform: restart
+    name: "Redémarrage Banc 7B"
