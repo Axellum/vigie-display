@@ -136,3 +136,15 @@ Ce banc d'essai inclut :
   * Commande `light.turn_off` : extinction complète de la dalle et mise en pause LVGL.
   * Commande `light.turn_on` (`brightness: 180`) : séquence de réveil DCS (`0x11` Sleep Out → 120 ms → `0x29` Display On → reprise LVGL) exécutée avec succès sans corruption d'affichage ni désynchronisation.
 
+---
+
+## 🌐 Retours Communautaires Postés sur GitHub
+
+1. **`MaxGramser/homeassistant_espscreen` (PR #271)** :
+   * [Commentaire #6262284848](https://github.com/MaxGramser/homeassistant_espscreen/pull/271#issuecomment-6262284848) (Validation physique HP/TTS, micro ES7210, GPIO53 et volume_max 75%).
+2. **`payalneg/esp32p4-android-auto` (Issue #5 & #4)** :
+   * [Commentaire #6262325949](https://github.com/payalneg/esp32p4-android-auto/issues/5#issuecomment-6262325949) (Zébrures PPA YUV420 en 1024×600, padding 1024×608, alignement PSRAM et broches CAN GPIO21/22).
+3. **`GalusPeres/HomeTiles` (Issue #41)** :
+   * [Commentaire #6262329768](https://github.com/GalusPeres/HomeTiles/issues/41#issuecomment-6262329768) (Résolution écran noir sur silicium P4 v3.2 : LDO canal 3 à 2,5 V, reset GPIO33 et PSRAM 200 MHz).
+
+
