@@ -1,0 +1,60 @@
+# Fetches the embedded frame from vigie-api every `vigie_api_interval` and decodes it
+# (firmware/core/vigie_api_client.cpp). A response that is not complete (status, size,
+# END line, CRC) is refused and the screen keeps the previous data, marked as stale.
+# Contract of the frame: docs/api-frame.md (single source: vigie-api, docs/embedded-frame.md).
+
+esphome:
+  includes:
+    - firmware/core/vigie_api_client.h
+    - firmware/core/vigie_api_client.cpp
+
+http_request:
+  id: api_http
+  useragent: vigie-display/${vigie_version}
+  timeout: 8s
+  # The API runs on the local network over plain HTTP.
+  verify_ssl: false
+
+interval:
+  - interval: ${vigie_api_interval}
+    startup_delay: 5s
+    then:
+      - if:
+          condition:
+            wifi.connected:
+          then:
+            - http_request.get:
+                url: !lambda |-
+                  char url[256];
+                  if (!vigie_build_frame_url("${vigie_api_url}", "${vigie_board}", g_vigie_state.gps, url, sizeof(url))) {
+                    return std::string();
+                  }
+                  return std::string(url);
+                capture_response: true
+                max_response_buffer_size: ${vigie_api_max_bytes}
+                on_response:
+                  then:
+                    - lambda: |-
+                        VigieAlarmDecision alarm;
+                        const uint32_t now = millis();
+                        if (vigie_receive_http_response(response->status_code, body.c_str(), body.size(),
+                                                        ${vigie_api_max_bytes}, g_vigie_state, g_vigie_link, now, alarm)) {
+                          ESP_LOGI("vigie.api", "Frame received: %u zones, %u hazards (%u bytes)",
+                                   (unsigned) g_vigie_state.zone_count, (unsigned) g_vigie_state.hazard_count,
+                                   (unsigned) body.size());
+                          if (alarm.trigger) {
+                            ESP_LOGI("vigie.api", "Critical hazard not acknowledged: %s (%.0f km)", alarm.hazard_id,
+                                     alarm.distance_km);
+                          }
+                        } else {
+                          ESP_LOGW("vigie.api", "Frame refused: HTTP %d, %u bytes", response->status_code,
+                                   (unsigned) body.size());
+                        }
+                        const uint32_t clock = id(sntp_time).now().is_valid() ? id(sntp_time).now().timestamp : 0;
+                        vigie_screen_paint(g_vigie_state, g_vigie_link, now,
+                                           vigie_current_utc(clock, g_vigie_state, g_vigie_link, now));
+                on_error:
+                  then:
+                    - lambda: |-
+                        vigie_report_failure(g_vigie_link);
+                        ESP_LOGW("vigie.api", "Request failed (network or timeout)");

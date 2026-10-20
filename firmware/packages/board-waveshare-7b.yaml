@@ -1,0 +1,211 @@
+# Waveshare ESP32-P4-WIFI6-Touch-LCD-7B: 7" IPS 1024x600 (EK79007, MIPI-DSI, reset GPIO33),
+# P4 v3 at 400 MHz, 32 MB flash, 32 MB hex PSRAM, GT911 touch (reset GPIO23), ESP32-C6
+# Wi-Fi over SDIO.
+#
+# Pins and settings come from Waveshare's BSP and schematic and were tested on a real
+# board in the M5-Tab5-ESPHome-LVGL project (Tab5/paquets/carte-waveshare-7b.yaml, October
+# 2026), from which this file is taken. Notes on the board: docs/hardware.md.
+# Do not change a pin without reading it again in the BSP or on the schematic.
+
+substitutions:
+  board_screen_width: "1024"
+  board_screen_height: "600"
+  # 0 = native orientation of the panel, no software rotation (69 ms per full frame instead
+  # of 83 ms measured with 180). Use 180 for a board mounted the other way up.
+  board_rotation: "0"
+  # Screen off: black veil + DCS "display off" + "sleep in" (the analog backlight never goes
+  # fully dark), and a dark panel during a firmware update (it flickered). firmware/display/
+  # panel_power.cpp.
+  board_panel_off_mode: "2"
+  board_panel_dark_during_ota: "1"
+
+esphome:
+  includes:
+    - firmware/display/board_7b_version.h
+    - firmware/display/c6_link.h
+    - firmware/display/c6_link.cpp
+    - firmware/display/panel_power.h
+    - firmware/display/panel_power.cpp
+  build_flags:
+    - -DVIGIE_PANEL_OFF_MODE=${board_panel_off_mode}
+    - -DVIGIE_PANEL_DARK_DURING_OTA=${board_panel_dark_during_ota}
+
+esp32:
+  variant: esp32p4
+  # P4 v3 (production silicon): 400 MHz is its normal and only frequency.
+  engineering_sample: false
+  cpu_frequency: 400MHz
+  flash_size: 32MB
+  framework:
+    type: esp-idf
+    advanced:
+      enable_idf_experimental_features: true
+      execute_from_psram: true
+      compiler_optimization: PERF
+      loop_task_stack_size: 16384
+      # Signed firmware: an OTA update must be signed with the same RSA key. The key never
+      # goes into git (*.pem is ignored); pass its path with -s vigie_signing_key <path>.
+      signed_ota_verification:
+        signing_key: ${vigie_signing_key}
+        signing_scheme: rsa3072
+    sdkconfig_options:
+      CONFIG_SPI_FLASH_YIELD_DURING_ERASE: "y"
+      CONFIG_ESP_TASK_WDT_TIMEOUT_S: "15"
+      CONFIG_SPIRAM_ALLOW_BSS_SEG_EXTERNAL_MEMORY: "y"
+      CONFIG_CACHE_L2_CACHE_256KB: "y"
+      CONFIG_SPIRAM_MEMTEST: "n"
+      CONFIG_LWIP_DHCP_DOES_ARP_CHECK: "n"
+      CONFIG_LWIP_DHCP_DOES_NOT_CHECK_OFFERED_IP: "y"
+
+psram:
+  mode: hex
+  speed: 200MHz
+
+# Wi-Fi through the ESP32-C6 over SDIO (default esp_hosted pins of the P4, those of the
+# Waveshare Wi-Fi demo and of the schematic; GPIO54 drives C6_CHIP_PU). active_high: true
+# (false gives "sdmmc_card_init failed", tested on the board).
+esp32_hosted:
+  variant: esp32c6
+  active_high: true
+  clk_pin: GPIO18
+  cmd_pin: GPIO19
+  d0_pin: GPIO14
+  d1_pin: GPIO15
+  d2_pin: GPIO16
+  d3_pin: GPIO17
+  reset_pin: GPIO54
+  slot: 1
+  sdio_frequency: 20MHz
+  use_psram: true
+
+globals:
+  # Software restarts become CORE resets (firmware/display/c6_link.cpp): evaluated in
+  # setup(), before the components.
+  - id: c6_link_ready
+    type: bool
+    initial_value: "c6_link_setup()"
+  - id: ota_in_progress
+    type: bool
+    initial_value: "false"
+
+logger:
+  level: INFO
+  baud_rate: 115200
+  hardware_uart: USB_SERIAL_JTAG
+  tx_buffer_size: 2048
+
+ota:
+  - platform: esphome
+    on_begin:
+      - globals.set: { id: ota_in_progress, value: "true" }
+      - script.execute: { id: panel_during_ota, starting: true }
+    on_abort:
+      - globals.set: { id: ota_in_progress, value: "false" }
+      - script.execute: { id: panel_during_ota, starting: false }
+    on_error:
+      - globals.set: { id: ota_in_progress, value: "false" }
+      - script.execute: { id: panel_during_ota, starting: false }
+
+safe_mode:
+  num_attempts: 10
+  boot_is_good_after: 30s
+
+# Touch (GT911 at 0x5D/0x14) and audio codecs (ES8311 0x18, ES7210 0x40).
+i2c:
+  - id: bsp_bus
+    sda: GPIO7
+    scl: GPIO8
+    frequency: 400kHz
+
+# MIPI-DSI PHY supply: LDO_VO3 at 2.5 V (BSP).
+esp_ldo:
+  - voltage: 2.5V
+    channel: 3
+
+display:
+  - id: panel
+    platform: mipi_dsi
+    model: WAVESHARE-ESP32-P4-WIFI6-TOUCH-LCD-7B
+    dimensions:
+      width: ${board_screen_width}
+      height: ${board_screen_height}
+    pixel_mode: 16bit
+    color_order: RGB
+    update_interval: never
+    auto_clear_enabled: false
+
+# The BSP declares RST and INT unconnected, but the schematic wires GPIO23 to the touch
+# connector, and every working public config uses it as reset_pin: without it, 1 touch in
+# 5 minutes was recognised. Mirrored in X and Y to match the panel; ESPHome rotates touches
+# with the image. Polled (no INT).
+touchscreen:
+  - id: touch
+    platform: gt911
+    reset_pin: GPIO23
+    update_interval: 50ms
+    transform:
+      swap_xy: false
+      mirror_x: true
+      mirror_y: true
+    on_release:
+      then:
+        - if:
+            condition:
+              light.is_off: backlight
+            then:
+              - light.turn_on: backlight
+
+# Backlight: LEDC on GPIO32, inverted (BSP: output_invert = 1), 5 kHz.
+output:
+  - platform: ledc
+    id: backlight_pwm
+    pin:
+      number: GPIO32
+      inverted: true
+    frequency: 5000Hz
+
+light:
+  - platform: monochromatic
+    output: backlight_pwm
+    name: "Backlight"
+    id: backlight
+    restore_mode: RESTORE_DEFAULT_ON
+    initial_state:
+      brightness: 75%
+    default_transition_length: 250ms
+    on_turn_on:
+      - script.execute: panel_wake_up
+    on_turn_off:
+      - lambda: "panel_off(id(panel));"
+      - lvgl.pause:
+
+script:
+  - id: panel_wake_up
+    mode: restart
+    then:
+      - if:
+          condition:
+            lambda: "return panel_wake(id(panel));"
+          then:
+            - delay: 120ms
+      - if:
+          condition:
+            lambda: "return id(backlight).remote_values.is_on() && !(panel_dark_during_ota() && id(ota_in_progress));"
+          then:
+            - lambda: "panel_on(id(panel));"
+            - lvgl.resume:
+  - id: panel_during_ota
+    parameters:
+      starting: bool
+    then:
+      - if:
+          condition:
+            lambda: "return panel_dark_during_ota() && id(backlight).remote_values.is_on();"
+          then:
+            - if:
+                condition:
+                  lambda: "return starting;"
+                then:
+                  - lambda: "panel_off(id(panel));"
+                else:
+                  - script.execute: panel_wake_up

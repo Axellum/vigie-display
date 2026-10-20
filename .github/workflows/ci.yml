@@ -1,0 +1,86 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # Which parts changed: the firmware compile only runs when the firmware changes.
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      firmware: ${{ steps.filter.outputs.firmware }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+      - id: filter
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "firmware=true" >> "$GITHUB_OUTPUT"; exit 0
+          fi
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            base="${{ github.event.pull_request.base.sha }}"
+          else
+            base="${{ github.event.before }}"
+          fi
+          if git diff --name-only "$base" HEAD | grep -qE '^(vigie\.yaml|firmware/|\.github/workflows/)'; then
+            echo "firmware=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "firmware=false" >> "$GITHUB_OUTPUT"
+          fi
+
+  tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
+        with:
+          python-version: "3.13"
+      - run: pip install -r requirements-dev.txt
+      - name: pytest (repository rules and C++ tests with g++)
+        run: |
+          g++ --version | head -n 1
+          python -m pytest -rs
+      - name: No C++ test may be skipped in CI
+        run: |
+          python -m pytest -q -rs tests/test_firmware.py -k test_cpp | tee pytest.out
+          ! grep -q SKIPPED pytest.out
+
+  firmware:
+    needs: changes
+    if: needs.changes.outputs.firmware == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - name: Minimum ESPHome version (min_version of vigie.yaml)
+        id: floor
+        run: |
+          v=$(sed -n 's/^[[:space:]]*min_version:[[:space:]]*\([0-9][0-9.]*\).*/\1/p' vigie.yaml | head -n 1)
+          test -n "$v"
+          echo "version=$v" >> "$GITHUB_OUTPUT"
+      - name: Throw-away signing key
+        run: openssl genrsa -out vigie_signing_key.pem 3072
+      - name: Compile
+        id: build
+        uses: esphome/build-action@ae5408cdbc4f70692bf8e345c4982bca05a93667 # v8.1.0
+        with:
+          yaml-file: vigie.yaml
+          version: ${{ steps.floor.outputs.version }}
+      - name: Firmware artifact
+        if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: vigie-firmware-waveshare-7b
+          path: ${{ steps.build.outputs.name }}
+          if-no-files-found: error
+          retention-days: 30

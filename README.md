@@ -1,43 +1,73 @@
-# Vigie Mondiale 7B — Terminal Pro Météo & Alertes Catastrophes (Waveshare ESP32-P4 7")
+# Vigie display
 
-> **Statut :** Initialisation architecture & extraction du socle Waveshare 7B (`2026-10-18`)
-> **Matériel cible :** Waveshare `ESP32-P4-WIFI6-Touch-LCD-7B` (7" IPS 1024×600 MIPI-DSI EK79007, Tactile GT911, Wi-Fi 6 ESP32-C6 SDIO, Audio ES8311 + NS4150B, 32 Mo Flash, 32 Mo PSRAM Hex 200 MHz, P4 v3.2 @ 400 MHz).
-> **Indépendance totale :** **Zéro lien avec Home Assistant**. Connexion directe HTTPS / WebSocket (`WSS`) vers le backend dédié [`alerte_mondiale_api`](../alerte_mondiale_api/README.md).
+World hazards and local weather on an ESP32-P4 touch screen, without Home Assistant.
 
----
+Vigie is a personal, non-commercial project in two parts:
 
-## 🎯 Vision Produit (Outil Pro Mondial)
+- **vigie-api** — a Python service that gathers earthquakes, tsunamis, volcanoes, cyclones, floods,
+  wildfires, space weather and weather forecasts from public sources, merges them and serves a
+  compact text frame.
+- **vigie-display** (this repository) — ESPHome + LVGL firmware that fetches that frame over the
+  local network every minute and shows it.
 
-Transformer la carte **Waveshare 7 pouces ESP32-P4** en une **appliance matérielle autonome de veille environnementale, météorologique et sismique/catastrophes en temps réel** (« Situational Awareness Terminal ») destinée aux professionnels (logistique, sécurité civile, mairies, transport maritime/aérien, sites industriels internationaux) et aux utilisateurs exigeants.
+## What the screen shows
 
-### Fonctionnalités Clés
-1. **Surveillance Multi-Zones Mondiales (Watchlist / Geofencing)** :
-   - Suivi simultané de **N zones stratégiques** dans le monde (ex. : Siège Europe, Usine Asie, Port Amérique, Zone Pacifique) + vue globale mondiale.
-   - Fuseaux horaires multiples, météo locale hyper-précise, radars de précipitations et prévisions à 10 jours / par heure (conservées en NVS dès la 1re image au boot).
-2. **Centre d'Alertes Catastrophes Naturelles Temps Réel** :
-   - **Séismes** (USGS / EMSC : magnitude, profondeur, épicentre, distance aux actifs surveillés).
-   - **Tsunamis** (NOAA PTWC : alertes côtières, niveau de menace).
-   - **Volcans** (Smithsonian GVP / USGS : codes couleurs aviation et éruptions en cours).
-   - **Ouragans, Typhons, Cyclones & Tornades** (GDACS / NOAA NHC / NWS : catégorie, trajectoire, vents max).
-   - **Inondations, Pluies diluviennes, Feux de forêts & Météo Spatiale** (GDACS, NASA FIRMS, NOAA SWPC tempêtes géomagnétiques Kp).
-3. **Matrice d'Alerte Critique (Vert / Jaune / Orange / Rouge)** :
-   - Réveil automatique de la dalle (`sleep out` MIPI-DSI), bandeau visuel prioritaire et alerte sonore calibrée (codec ES8311 à 0 dB sans saturation) en cas d'événement critique dans une zone surveillée.
-
----
-
-## 📂 Structure du Dépôt
-
-| Dossier / Fichier | Rôle |
+| Area | Content |
 | :--- | :--- |
-| [`docs/travail/INDEX.md`](docs/travail/INDEX.md) | Point d'entrée du kit documentaire (Objectifs, Plan, Historique, Décisions, Tâches) |
-| [`docs/travail/OBJECTIFS.md`](docs/travail/OBJECTIFS.md) | Objectifs mesurables du produit et critères de validation |
-| [`docs/travail/PLAN.md`](docs/travail/PLAN.md) | Plan de développement par phases (Lots 1 à 6) et architecture logicielle |
-| [`docs/travail/HISTORIQUE_DEV.md`](docs/travail/HISTORIQUE_DEV.md) | Journal chronologique de développement et héritage technique du projet Tab5 |
-| [`docs/travail/BRIQUES_REPRISES_TAB5.md`](docs/travail/BRIQUES_REPRISES_TAB5.md) | Inventaire exact des briques matérielles/LVGL reprises de `00ProjetTab` et des éléments purgés |
-| [`docs/travail/DECISIONS.md`](docs/travail/DECISIONS.md) | Décisions d'architecture (ADR) |
-| [`docs/travail/TACHES.md`](docs/travail/TACHES.md) | Board des tâches ouvertes du firmware |
-| `firmware/socle/` | Socle C++ pur (structures météo/alertes, parseurs zéro-allocation, thèmes, i18n 7 langues, économie) |
-| `firmware/ecran/` | Couche matérielle Waveshare 7B (dalle EK79007, reset C6 SDIO, barre boot, LVGL 9.5, NVS) |
-| `firmware/paquets/` | Paquets de configuration matérielle et graphique Waveshare 7B |
-| `firmware/ui_components/` | Composants d'interface LVGL (cartes météo, popups d'alerte, modales) |
-| `firmware/fonts/` | Polices vectorielles (`IconeMeteo.ttf`, `materialdesignicons-webfont.ttf`) |
+| Status bar | Link to the API (up to date, waiting, unreachable — with the age of the data), date and time of the active zone |
+| World map | Active hazards (dot colour = severity: red, orange, yellow, green) and the watched zones |
+| Alert list | The five most severe hazards: type, magnitude when defined, source title, distance and direction from the active zone, age |
+| Weather panel | Active zone: current weather, wind, gusts, humidity, rain in the next hour, air quality, waves (coastal zones), five-day forecast. Touch it to show the next zone |
+
+Texts are in English, or in French with `-s vigie_language fr`. Values the API does not know are
+left out, never invented.
+
+## Hardware
+
+| Board | Status |
+| :--- | :--- |
+| Waveshare ESP32-P4-WIFI6-Touch-LCD-7B (7", 1024×600) | Supported (`vigie_board: waveshare-7b`) |
+
+Notes on the board: [docs/hardware.md](docs/hardware.md).
+
+## Build and flash
+
+Requirements: ESPHome 2026.9.1 or newer, and an RSA 3072 key that signs the firmware
+(`openssl genrsa -out vigie_signing_key.pem 3072`; `*.pem` is ignored by git, keep it safe: every
+later update must be signed with the same key).
+
+```bash
+esphome -s vigie_api_url http://192.168.0.155:8080 -s vigie_signing_key vigie_signing_key.pem compile vigie.yaml
+```
+
+| Substitution | Default | Meaning |
+| :--- | :--- | :--- |
+| `vigie_api_url` | `http://vigie-api.local:8080` | Base URL of vigie-api |
+| `vigie_api_interval` | `60s` | Refresh period |
+| `vigie_language` | `en` | Screen language: `en` or `fr` |
+| `vigie_board` | `waveshare-7b` | Board package (`firmware/packages/board-<name>.yaml`) |
+| `vigie_signing_key` | `vigie_signing_key.pem` | Firmware signing key |
+| `vigie_version` | `0.1.0-dev` | Firmware version (the release tag) |
+
+Wi-Fi credentials are not in the configuration: give them after the first flash with Improv
+(USB, e.g. [ESPHome Web](https://web.esphome.io)) or through the `Vigie setup` access point. More in
+[docs/development.md](docs/development.md).
+
+## Repository layout
+
+| Path | Content |
+| :--- | :--- |
+| `vigie.yaml` | ESPHome entry point |
+| `firmware/core/` | Pure C++ (no ESPHome, no LVGL), tested on a PC: world state, frame decoding, texts and formatting, API client logic |
+| `firmware/display/` | LVGL screen and board helpers (panel power, C6 Wi-Fi link) |
+| `firmware/packages/` | ESPHome packages: board, screen, API client |
+| `firmware/fonts/`, `firmware/images/` | Fonts (licences in `LICENSES.md`) and the world map |
+| `tools/` | C++ tests, world map generator and its data |
+| `tests/` | pytest guards and the API frame fixture |
+| `docs/` | Architecture, hardware, frame contract, development, decisions |
+
+## Licences and data
+
+Fonts: see [firmware/fonts/LICENSES.md](firmware/fonts/LICENSES.md). Map: Natural Earth (public domain,
+[tools/data/SOURCES.md](tools/data/SOURCES.md)). Hazard and weather data come from the sources
+listed by vigie-api, under their own terms.

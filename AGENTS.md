@@ -1,15 +1,30 @@
-# AGENTS.md — Instructions Partagées (Vigie Mondiale 7B)
+# AGENTS.md — guide for AI coding agents
 
-> Ce fichier est la source unique de consignes pour tous les agents IA (Antigravity, Claude Code, Cursor, Moteur d'Agents) travaillant sur `alerte_mondiale_7b`.
+Vigie display: ESPHome + LVGL 9.5 firmware for an ESP32-P4 screen (Waveshare 7B, 1024×600) that
+shows world hazards and weather fetched from vigie-api. No Home Assistant. Read `README.md` and
+`docs/architecture.md` first.
 
-## 1. Identité du Dépôt
-- **Matériel cible** : `Waveshare ESP32-P4-WIFI6-Touch-LCD-7B` (7" IPS 1024×600, P4 v3.2 @ 400 MHz, 32 Mo Flash, 32 Mo PSRAM Hex 200 MHz, C6 Wi-Fi SDIO, GT911 GPIO23, ES8311 + NS4150B GPIO53).
-- **Règle d'Or** : **ZÉRO lien avec Home Assistant**. Toute donnée météo ou alerte catastrophe provient du backend [`alerte_mondiale_api`](../alerte_mondiale_api/README.md) ou du cache NVS local.
-- **Documentation de travail** : Toujours lire [`docs/travail/INDEX.md`](docs/travail/INDEX.md) avant d'intervenir et mettre à jour [`docs/travail/HISTORIQUE_DEV.md`](docs/travail/HISTORIQUE_DEV.md) et [`docs/travail/TACHES.md`](docs/travail/TACHES.md) après chaque avancée vérifiée.
+## Commands
 
-## 2. Garde-fous Matériels Waveshare 7B (Ne jamais casser)
-1. **Lien SDIO C6** : Toujours conserver `tab5_lien_c6.h/.cpp` (`esp_rom_software_reset_system()`). Ne jamais interroger la version ESP-Hosted du C6 d'usine (`carte_c6_version: "false"`).
-2. **Dalle EK79007 (1024×600)** : Conserver `tab5_dalle.h/.cpp` (`sleep in` 0x10 + voile noir à l'extinction et pendant l'OTA). Pas d'attente d'1 s au boot (`carte_attente_ecran_ms: "0"`, reset direct sur `GPIO33`).
-3. **Tactile GT911** : Toujours garder `reset_pin: GPIO23`.
-4. **Audio ES8311** : Ne jamais dépasser `volume_max: 75%` (`0xBF` = 0 dB) pour éviter la saturation (+32 dB à 100 %). Ampli `NS4150B` sur `GPIO53`.
-5. **LVGL 9.5** : Garder les modales fermées garées à `translate_y = 10000` (`tab5_registry.cpp`) pour éviter le parcours `blur_walk_cb`.
+```bash
+python -m pytest                      # repository rules + C++ tests (needs g++/clang++ or `pip install ziglang`)
+python tools/make_world_map.py        # redraw the world map after changing the projection
+esphome -s vigie_api_url http://<host>:8080 -s vigie_signing_key <key.pem> compile vigie.yaml   # ESPHome >= 2026.9.1
+```
+
+## Rules
+
+1. Logic without LVGL goes in `firmware/core/` (plain C++17, no allocation, no ESPHome), with a
+   test in `tools/test_*.cpp`. The LVGL layer (`firmware/display/vigie_screen.cpp`) only places
+   texts computed by the core.
+2. Every on-screen text goes through `firmware/core/vigie_text.*`, in English and French.
+3. Never display an invented value: unknown is hidden or shown as unknown.
+4. Every MDI icon drawn must be in its font's `glyphs:` (`firmware/packages/vigie-screen.yaml`).
+5. Local includes are flat (`#include "vigie_model.h"`) and every C++ file is listed in an `includes:`.
+6. The frame contract belongs to vigie-api (`docs/embedded-frame.md` there); refresh
+   `tests/fixtures/api_frame.txt` when it changes.
+7. Board facts in `firmware/packages/board-waveshare-7b.yaml` and `firmware/display/` were tested on
+   the real board: do not change a pin, the C6 CORE reset, the touch reset pin or the panel power
+   modes without a new test on the board.
+8. Never commit a signing key (`*.pem`) or `secrets.yaml`. Flashing a device is a human decision.
+9. English everywhere (code, comments, docs, commits). Branch + pull request; update `CHANGELOG.md`.

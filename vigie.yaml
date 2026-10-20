@@ -1,0 +1,58 @@
+# Vigie display: world hazards and weather on an ESP32-P4 screen, fed by vigie-api.
+# No Home Assistant: the display fetches its data from the API over the local network.
+#
+# Build (ESPHome 2026.9.1 or newer):
+#   esphome -s vigie_api_url http://<api-host>:8080 -s vigie_signing_key <path/to/key.pem> compile vigie.yaml
+# Every setting below can be overridden the same way (-s <name> <value>). See README.md.
+
+substitutions:
+  name: vigie
+  friendly_name: Vigie
+  # Version of the firmware: the git tag of a release; "-dev" for a local build.
+  vigie_version: 0.1.0-dev
+  # Board package: firmware/packages/board-<vigie_board>.yaml.
+  vigie_board: waveshare-7b
+  # Screen language: en or fr.
+  vigie_language: en
+  # vigie-api base URL and refresh period.
+  vigie_api_url: http://vigie-api.local:8080
+  vigie_api_interval: 60s
+  vigie_api_max_bytes: "32768"
+  # RSA 3072 key that signs the firmware (never in git; *.pem is ignored).
+  vigie_signing_key: vigie_signing_key.pem
+
+esphome:
+  name: ${name}
+  friendly_name: ${friendly_name}
+  min_version: 2026.9.1
+  project:
+    name: axellum.vigie-display
+    version: ${vigie_version}
+  includes:
+    - firmware/core/vigie_model.h
+    - firmware/core/vigie_model.cpp
+    - firmware/core/vigie_text.h
+    - firmware/core/vigie_text.cpp
+
+packages:
+  board: !include firmware/packages/board-${vigie_board}.yaml
+  screen: !include firmware/packages/vigie-screen.yaml
+  api_client: !include firmware/packages/vigie-api-client.yaml
+
+# No credentials here: they are given after flashing (Improv over USB, or the fallback
+# access point and its captive portal) and kept in NVS at a fixed place, so they survive
+# firmware updates.
+wifi:
+  power_save_mode: NONE
+  fast_connect: true
+  ap:
+    ssid: "Vigie setup"
+
+improv_serial:
+
+captive_portal:
+
+time:
+  - platform: sntp
+    id: sntp_time
+    timezone: UTC

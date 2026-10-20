@@ -1,0 +1,5 @@
+# Tests on a PC (python -m pytest). The C++ tests also need g++ or clang++; on Windows,
+# `pip install ziglang` provides one.
+pytest>=8.0
+pyyaml>=6.0
+pillow>=10.0
