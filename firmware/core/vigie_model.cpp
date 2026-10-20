@@ -112,11 +112,12 @@ VigieSeverity parse_severity(const char* s) {
     return VigieSeverity::GREEN;
 }
 
-// Most severe first; then tsunami warnings; then the largest value.
+// Most severe first; then tsunami warnings; then the largest value (an unknown value last).
 bool ranks_before(const VigieHazard& a, const VigieHazard& b) {
     if (a.severity != b.severity) return static_cast<uint8_t>(a.severity) > static_cast<uint8_t>(b.severity);
     if (a.tsunami_warning != b.tsunami_warning) return a.tsunami_warning;
-    return a.value > b.value;
+    if (vigie_known(a.value) != vigie_known(b.value)) return vigie_known(a.value);
+    return vigie_known(a.value) && a.value > b.value;
 }
 
 void sort_hazards(VigieWorldState& state) {
@@ -142,6 +143,22 @@ float read_float(const char* field, float fallback) {
     if (field == nullptr || field[0] == '\0') return fallback;
     const float v = std::strtof(field, nullptr);
     return std::isfinite(v) ? v : fallback;
+}
+
+// A frame field to an integer in [low, high]; `unknown` when the field is empty.
+long read_bounded(const char* field, long low, long high, long unknown) {
+    if (field == nullptr || field[0] == '\0') return unknown;
+    const long v = std::strtol(field, nullptr, 10);
+    return v < low ? low : (v > high ? high : v);
+}
+
+uint16_t read_count(const char* field) { return static_cast<uint16_t>(read_bounded(field, 0, 65535, 0)); }
+
+bool any_field(char* const* f, int n, int first, int last) {
+    for (int i = first; i <= last && i < n; ++i) {
+        if (f[i][0] != '\0') return true;
+    }
+    return false;
 }
 
 }  // namespace
@@ -415,6 +432,8 @@ bool vigie_decode_frame(const char* frame, VigieWorldState& state) {
     if (frame == nullptr || frame[0] == '\0' || !vigie_frame_crc_ok(frame)) return false;
 
     bool any = false;
+    bool head_counts = false;
+    uint16_t head_red = 0, head_orange = 0, head_yellow = 0;
     const char* cursor = frame;
     while (*cursor != '\0') {
         while (*cursor == '\r' || *cursor == '\n' || *cursor == ' ' || *cursor == '\t') ++cursor;
@@ -438,15 +457,18 @@ bool vigie_decode_frame(const char* frame, VigieWorldState& state) {
         if (equals(tag, "END")) break;
 
         if (equals(tag, "HEAD")) {
-            // HEAD|<server_utc>|<kp>|<active_zone>|...
+            // HEAD|server_utc|kp|reserved|version|device_type|max_severity|red|orange|yellow|
+            //      gps_degraded|hf_blackout|simulation
             state.updated_utc = static_cast<uint32_t>(std::strtoul(f[1], nullptr, 10));
-            if (n > 2 && f[2][0] != '\0') {
-                state.kp = read_float(f[2], 0.0f);
-                state.solar_level = vigie_solar_level_from_kp(state.kp);
-            }
-            if (n > 3 && f[3][0] != '\0') {
-                const int z = std::atoi(f[3]);
-                if (z >= 0 && z < kVigieMaxZones) state.active_zone = static_cast<int8_t>(z);
+            state.kp = n > 2 ? read_float(f[2], kVigieUnknown) : kVigieUnknown;
+            state.solar_level = vigie_solar_level_from_kp(state.kp);
+            // Empty max_severity: no hazard source answered (not an all-clear).
+            state.hazards_known = n > 6 && f[6][0] != '\0';
+            head_counts = state.hazards_known && n > 9 && f[7][0] != '\0' && f[8][0] != '\0' && f[9][0] != '\0';
+            if (head_counts) {
+                head_red = read_count(f[7]);
+                head_orange = read_count(f[8]);
+                head_yellow = read_count(f[9]);
             }
             state.zone_count = 0;
             state.hazard_count = 0;
@@ -466,46 +488,47 @@ bool vigie_decode_frame(const char* frame, VigieWorldState& state) {
             z.lat = std::strtod(f[3], nullptr);
             z.lon = std::strtod(f[4], nullptr);
             z.is_mobile_gps = equals(z.id, "GPS");
-            if (n > 5 && f[5][0] != '\0') z.utc_offset_s = static_cast<int32_t>(std::strtol(f[5], nullptr, 10));
-            z.has_weather = n > 6 && f[6][0] != '\0';
-            if (n > 6) z.temp_c = read_float(f[6], 0.0f);
-            if (n > 7) z.feels_like_c = read_float(f[7], z.temp_c);
-            if (n > 8 && f[8][0] != '\0') z.humidity_pct = static_cast<uint8_t>(std::atoi(f[8]));
-            if (n > 9) z.pressure_hpa = read_float(f[9], z.pressure_hpa);
-            if (n > 10) z.wind_kmh = read_float(f[10], 0.0f);
-            if (n > 11) z.gust_kmh = read_float(f[11], 0.0f);
-            if (n > 12 && f[12][0] != '\0') z.wind_deg = static_cast<uint16_t>(std::atoi(f[12]));
-            if (n > 13 && f[13][0] != '\0') z.weather_code = static_cast<uint16_t>(std::atoi(f[13]));
-            if (n > 14) z.uv = read_float(f[14], 0.0f);
-            if (n > 15 && f[15][0] != '\0') z.aqi = static_cast<uint16_t>(std::atoi(f[15]));
+            z.utc_offset_known = n > 5 && f[5][0] != '\0';
+            if (z.utc_offset_known) z.utc_offset_s = static_cast<int32_t>(read_bounded(f[5], -50400, 50400, 0));
+            // Every field of a column can be empty on its own (a fallback provider gives less).
+            z.has_weather = any_field(f, n, 6, 18);
+            if (n > 6) z.temp_c = read_float(f[6], kVigieUnknown);
+            if (n > 7) z.feels_like_c = read_float(f[7], kVigieUnknown);
+            if (n > 8) z.humidity_pct = static_cast<uint8_t>(read_bounded(f[8], 0, 100, kVigieUnknownPct));
+            if (n > 9) z.pressure_hpa = read_float(f[9], kVigieUnknown);
+            if (n > 10) z.wind_kmh = read_float(f[10], kVigieUnknown);
+            if (n > 11) z.gust_kmh = read_float(f[11], kVigieUnknown);
+            if (n > 12) z.wind_deg = static_cast<uint16_t>(read_bounded(f[12], 0, 359, kVigieUnknownCode));
+            if (n > 13) z.weather_code = static_cast<uint16_t>(read_bounded(f[13], 0, 999, kVigieUnknownCode));
+            if (n > 14) z.uv = read_float(f[14], kVigieUnknown);
+            if (n > 15) z.aqi = static_cast<uint16_t>(read_bounded(f[15], 0, 9999, kVigieUnknownCode));
+            // Nowcast: all or nothing (fields 16 to 18); -1 = dry for the whole hour.
             if (n > 16 && f[16][0] != '\0') {
-                z.rain.starts_in_min = static_cast<int16_t>(std::atoi(f[16]));
+                z.rain.known = true;
+                z.rain.starts_in_min = static_cast<int16_t>(read_bounded(f[16], -1, 60, -1));
+                z.rain.max_mm_h = n > 17 ? read_float(f[17], 0.0f) : 0.0f;
                 z.rain.expected = z.rain.starts_in_min >= 0;
-            }
-            if (n > 17) {
-                z.rain.max_mm_h = read_float(f[17], 0.0f);
-                if (z.rain.max_mm_h > 0.0f) z.rain.expected = true;
-            }
-            if (n > 18 && f[18][0] != '\0') {
-                char* slots[kVigieRainSlots15m] = {};
-                const int k = split_fields(f[18], ',', slots, kVigieRainSlots15m);
-                for (int i = 0; i < k; ++i) z.rain.slots_15m[i] = read_float(slots[i], 0.0f);
+                if (n > 18 && f[18][0] != '\0') {
+                    char* slots[kVigieRainSlots15m] = {};
+                    const int k = split_fields(f[18], ',', slots, kVigieRainSlots15m);
+                    for (int i = 0; i < k; ++i) z.rain.slots_15m[i] = read_float(slots[i], 0.0f);
+                }
             }
             if (n > 19 && f[19][0] != '\0') {
-                z.marine.wave_height_m = read_float(f[19], 0.0f);
-                z.marine.valid = z.marine.wave_height_m > 0.0f;
+                z.marine.wave_height_m = read_float(f[19], kVigieUnknown);
+                z.marine.valid = vigie_known(z.marine.wave_height_m);
             }
-            if (n > 20) z.marine.wave_period_s = read_float(f[20], 0.0f);
-            if (n > 21 && f[21][0] != '\0') z.marine.wave_direction_deg = static_cast<uint16_t>(std::atoi(f[21]));
-            if (n > 22) z.marine.swell_height_m = read_float(f[22], 0.0f);
-            if (n > 23) z.marine.current_knots = read_float(f[23], 0.0f);
+            if (n > 20) z.marine.wave_period_s = read_float(f[20], kVigieUnknown);
+            if (n > 21) z.marine.wave_direction_deg = static_cast<uint16_t>(read_bounded(f[21], 0, 359, kVigieUnknownCode));
+            if (n > 22) z.marine.swell_height_m = read_float(f[22], kVigieUnknown);
+            if (n > 23) z.marine.current_knots = read_float(f[23], kVigieUnknown);
             any = true;
             continue;
         }
 
         if (equals(tag, "RAIN5M")) {
             // RAIN5M|zone_id|v0,...,v11
-            if (n < 3) continue;
+            if (n < 3 || f[2][0] == '\0') continue;  // empty: nowcast unknown
             for (uint8_t i = 0; i < state.zone_count; ++i) {
                 if (!equals(state.zones[i].id, f[1])) continue;
                 char* slots[kVigieRainSlots5m] = {};
@@ -518,23 +541,21 @@ bool vigie_decode_frame(const char* frame, VigieWorldState& state) {
         }
 
         if (equals(tag, "DAY")) {
-            // DAY|zone_id|label|weather_code|tmin|tmax|rain_mm|rain_probability_pct|wind_max_kmh|uv_max
+            // DAY|zone_id|date|weather_code|tmin|tmax|rain_mm|rain_probability_pct|wind_max_kmh|uv_max
             if (n < 6) continue;
             for (uint8_t i = 0; i < state.zone_count; ++i) {
                 VigieZone& z = state.zones[i];
                 if (!equals(z.id, f[1]) || z.day_count >= kVigieMaxForecastDays) continue;
                 VigieDayForecast& d = z.days[z.day_count++];
+                d = VigieDayForecast{};
                 copy_text(d.label, sizeof(d.label), f[2]);
-                d.weather_code = static_cast<uint16_t>(std::atoi(f[3]));
-                d.tmin_c = read_float(f[4], 0.0f);
-                d.tmax_c = read_float(f[5], 0.0f);
-                if (n > 6) d.rain_mm = read_float(f[6], 0.0f);
-                if (n > 7 && f[7][0] != '\0') {
-                    const int pct = std::atoi(f[7]);
-                    d.rain_probability_pct = static_cast<uint8_t>(pct < 0 ? 0 : (pct > 100 ? 100 : pct));
-                }
-                if (n > 8) d.wind_max_kmh = read_float(f[8], 0.0f);
-                if (n > 9) d.uv_max = read_float(f[9], 0.0f);
+                d.weather_code = static_cast<uint16_t>(read_bounded(f[3], 0, 999, kVigieUnknownCode));
+                d.tmin_c = read_float(f[4], kVigieUnknown);
+                d.tmax_c = read_float(f[5], kVigieUnknown);
+                if (n > 6) d.rain_mm = read_float(f[6], kVigieUnknown);
+                if (n > 7) d.rain_probability_pct = static_cast<uint8_t>(read_bounded(f[7], 0, 100, kVigieUnknownPct));
+                if (n > 8) d.wind_max_kmh = read_float(f[8], kVigieUnknown);
+                if (n > 9) d.uv_max = read_float(f[9], kVigieUnknown);
                 any = true;
                 break;
             }
@@ -551,8 +572,8 @@ bool vigie_decode_frame(const char* frame, VigieWorldState& state) {
             h.severity = parse_severity(f[3]);
             h.lat = std::strtod(f[4], nullptr);
             h.lon = std::strtod(f[5], nullptr);
-            h.value = read_float(f[6], 0.0f);
-            if (n > 7) h.depth_km = read_float(f[7], 0.0f);
+            h.value = read_float(f[6], kVigieUnknown);
+            if (n > 7) h.depth_km = read_float(f[7], kVigieUnknown);
             if (n > 8) h.tsunami_warning = f[8][0] == '1' || f[8][0] == 'T' || f[8][0] == 't';
             if (n > 9 && f[9][0] != '\0') h.timestamp_utc = static_cast<uint32_t>(std::strtoul(f[9], nullptr, 10));
             if (n > 10) copy_text(h.sources, sizeof(h.sources), f[10]);
@@ -563,9 +584,15 @@ bool vigie_decode_frame(const char* frame, VigieWorldState& state) {
     }
 
     if (any) {
+        if (state.active_zone < 0 || state.active_zone >= static_cast<int8_t>(state.zone_count)) state.active_zone = 0;
         sort_hazards(state);
         vigie_update_distances(state);
         vigie_update_counts(state);
+        if (head_counts) {  // HEAD counts every active hazard, not only the HAZ lines sent
+            state.red_count = head_red;
+            state.orange_count = head_orange;
+            state.yellow_count = head_yellow;
+        }
     }
     return any;
 }

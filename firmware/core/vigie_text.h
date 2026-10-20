@@ -31,7 +31,8 @@ VigieLanguage vigie_language_from_code(const char* code);
 
 enum class VigieText : uint8_t {
     ACTIVE_ALERTS,     // panel title
-    NO_ACTIVE_ALERT,   // empty alert list
+    NO_ACTIVE_ALERT,   // empty alert list, at least one hazard source answered
+    ALERTS_UNKNOWN,    // no hazard source answered the API: not an all-clear
     WAITING_DATA,      // before the first frame
     NO_WEATHER,        // the API had no weather for the zone
     WIND,
@@ -71,13 +72,13 @@ struct VigiePixel {
 VigiePixel vigie_map_project(double lat_deg, double lon_deg, int32_t width, int32_t height);
 
 // ─── Labels and icons ───────────────────────────────────────────────────────
-// WMO weather code (Open-Meteo) → short phrase: "Clear sky", "Overcast"…
+// WMO weather code (Open-Meteo) → short phrase: "Clear sky", "Overcast"…; "" when unknown.
 const char* vigie_weather_label(uint16_t wmo_code);
-// WMO weather code → MDI icon (UTF-8); `night` picks the moon for a clear sky.
+// WMO weather code → MDI icon (UTF-8); `night` picks the moon for a clear sky; "" when unknown.
 const char* vigie_weather_icon(uint16_t wmo_code, bool night);
 const char* vigie_hazard_name(VigieHazardType type);
 const char* vigie_hazard_icon(VigieHazardType type);
-// European AQI band: "Good" … "Extremely poor"; "" for 0 (unknown).
+// European AQI band: "Good" … "Extremely poor"; "" when unknown.
 const char* vigie_aqi_label(uint16_t aqi);
 
 // ─── Numbers, distances, times ──────────────────────────────────────────────
@@ -102,3 +103,25 @@ bool vigie_format_lat_lon(double lat_deg, double lon_deg, char* buf, size_t size
 bool vigie_format_hazard_value(const VigieHazard& hazard, char* buf, size_t size);
 // Night at the zone's local time (before 07:00 or from 20:00): for the weather icon.
 bool vigie_is_night(uint32_t utc, int32_t offset_s);
+
+// ─── Weather texts ──────────────────────────────────────────────────────────
+// Each returns false (empty buffer) when its value is unknown: the screen then hides it.
+// Rounded temperature: "13°", "-2°" ("0°" for -0.4).
+bool vigie_format_temperature(float celsius, char* buf, size_t size);
+// "22 km/h".
+bool vigie_format_speed(float kmh, char* buf, size_t size);
+// "10 km/h SW" ("10 km/h" when the direction is unknown).
+bool vigie_format_wind(float kmh, uint16_t from_deg, char* buf, size_t size);
+// "91%" / "91 %".
+bool vigie_format_percent(uint8_t pct, char* buf, size_t size);
+// Weather phrase and feels-like: "Overcast · feels like 12°" (either part alone if the other
+// is unknown).
+bool vigie_format_condition(const VigieZone& zone, char* buf, size_t size);
+// Rain within the hour: "none", "now", "in 15 min".
+bool vigie_format_rain_next_hour(const VigieRainNowcast& rain, char* buf, size_t size);
+// "47 · Moderate".
+bool vigie_format_air_quality(uint16_t aqi, char* buf, size_t size);
+// "3.4 m · 12 s" ("3.4 m" when the period is unknown).
+bool vigie_format_waves(const VigieMarine& marine, char* buf, size_t size);
+// Rain of a forecast day: its probability "98%", else its amount "5.6 mm" when above 0.
+bool vigie_format_day_rain(const VigieDayForecast& day, char* buf, size_t size);

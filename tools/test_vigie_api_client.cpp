@@ -66,6 +66,11 @@ void test_real_frame(size_t size) {
     for (uint8_t i = 1; i < s.hazard_count; ++i) {
         CHECK(static_cast<uint8_t>(s.hazards[i - 1].severity) >= static_cast<uint8_t>(s.hazards[i].severity));
     }
+    // HEAD counts every active hazard: at least the HAZ lines received.
+    CHECK(s.hazards_known);
+    uint16_t sent = 0;
+    for (uint8_t i = 0; i < s.hazard_count; ++i) sent += s.hazards[i].severity != VigieSeverity::GREEN ? 1 : 0;
+    CHECK(s.red_count + s.orange_count + s.yellow_count >= sent);
 
     // Time without a set clock: the frame's server time plus the time since it arrived.
     CHECK(vigie_current_utc(1800000000u, s, link, 9000) == 1800000000u);

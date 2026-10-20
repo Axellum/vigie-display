@@ -49,6 +49,8 @@ constexpr int kAlertRowH = 41;
 constexpr int kDetailRows = 6;
 constexpr int kForecastRows = 5;
 
+constexpr const char* kDash = "\xE2\x80\x93";  // en dash: an unknown value in a table cell
+
 struct AlertRow {
     lv_obj_t* bar = nullptr;
     lv_obj_t* icon = nullptr;
@@ -200,13 +202,21 @@ void paint_status(const VigieWorldState& state, const VigieLinkStatus& link, uin
     set_bg_colour(s.status_dot, dot);
     set_text(s.status_text, vigie_format_link_status(link, now_ms, buf, sizeof(buf)) ? buf : "");
 
-    // Clock and date of the active zone (UTC before the first frame).
+    // Clock and date of the active zone; in UTC, said so, when its offset is unknown.
     int32_t offset = 0;
+    bool local = false;
     if (state.active_zone >= 0 && state.active_zone < static_cast<int8_t>(state.zone_count)) {
-        offset = state.zones[state.active_zone].utc_offset_s;
+        local = state.zones[state.active_zone].utc_offset_known;
+        if (local) offset = state.zones[state.active_zone].utc_offset_s;
     }
     set_text(s.clock, vigie_format_clock(utc, offset, buf, sizeof(buf)) ? buf : "--:--");
-    set_text(s.date, vigie_format_date(utc, offset, buf, sizeof(buf)) ? buf : "");
+    if (vigie_format_date(utc, offset, buf, sizeof(buf))) {
+        // The clock label is too narrow for a suffix: the date says "UTC".
+        if (!local) std::strncat(buf, " \xC2\xB7 UTC", sizeof(buf) - std::strlen(buf) - 1);
+        set_text(s.date, buf);
+    } else {
+        set_text(s.date, "");
+    }
 }
 
 void paint_map(const VigieWorldState& state) {
@@ -261,14 +271,19 @@ void paint_alerts(const VigieWorldState& state, uint32_t utc) {
     const uint16_t counts[3] = {state.red_count, state.orange_count, state.yellow_count};
     for (int k = 0; k < 3; ++k) {
         std::snprintf(buf, sizeof(buf), "%u", static_cast<unsigned>(counts[k]));
-        set_text(s.counts[k], buf);
-        set_text_colour(s.counts[k], counts[k] > 0 ? kText : kTextDim);
+        set_text(s.counts[k], state.hazards_known ? buf : kDash);
+        set_text_colour(s.counts[k], state.hazards_known && counts[k] > 0 ? kText : kTextDim);
     }
 
     const int n = state.hazard_count <= kVigieMaxHazards ? state.hazard_count : kVigieMaxHazards;
     set_hidden(s.alerts_empty, n > 0);
-    set_text(s.alerts_empty, state.zone_count == 0 && n == 0 ? vigie_tr(VigieText::WAITING_DATA)
-                                                            : vigie_tr(VigieText::NO_ACTIVE_ALERT));
+    VigieText empty = VigieText::NO_ACTIVE_ALERT;
+    if (state.updated_utc == 0) {
+        empty = VigieText::WAITING_DATA;
+    } else if (!state.hazards_known) {
+        empty = VigieText::ALERTS_UNKNOWN;  // no source answered: never "no active alert"
+    }
+    set_text(s.alerts_empty, vigie_tr(empty));
     const bool french = vigie_language() == VigieLanguage::FR;
     for (int r = 0; r < kAlertRows; ++r) {
         AlertRow& row = s.rows[r];
@@ -322,7 +337,6 @@ void hide_detail(int i) {
 void paint_weather(const VigieWorldState& state, uint32_t utc) {
     Screen& s = g_screen;
     char buf[96];
-    char num[24];
     const bool has_zone = state.active_zone >= 0 && state.active_zone < static_cast<int8_t>(state.zone_count);
     if (!has_zone) {
         set_text(s.zone_name, vigie_tr(VigieText::WAITING_DATA));
@@ -336,10 +350,10 @@ void paint_weather(const VigieWorldState& state, uint32_t utc) {
         set_text(s.zone_coords, vigie_format_lat_lon(z.lat, z.lon, buf, sizeof(buf)) ? buf : "");
     }
     const bool weather = has_zone && state.zones[state.active_zone].has_weather;
-    set_hidden(s.weather_icon, !weather);
-    set_hidden(s.temperature, !weather);
     set_hidden(s.separator, !weather);
     if (!weather) {
+        set_hidden(s.weather_icon, true);
+        set_hidden(s.temperature, true);
         set_text(s.condition, has_zone ? vigie_tr(VigieText::NO_WEATHER) : "");
         for (int i = 0; i < kDetailRows; ++i) hide_detail(i);
         for (int i = 0; i < kForecastRows; ++i) {
@@ -353,41 +367,24 @@ void paint_weather(const VigieWorldState& state, uint32_t utc) {
         return;
     }
 
+    // Every value comes from a vigie_text formatter, which returns false when it is unknown:
+    // an unknown value is hidden, never shown as 0.
     const VigieZone& z = state.zones[state.active_zone];
-    const bool french = vigie_language() == VigieLanguage::FR;
-    set_text(s.weather_icon, vigie_weather_icon(z.weather_code, vigie_is_night(utc, z.utc_offset_s)));
-    std::snprintf(buf, sizeof(buf), "%ld\xC2\xB0", std::lround(z.temp_c));
-    set_text(s.temperature, std::strcmp(buf, "-0\xC2\xB0") == 0 ? "0\xC2\xB0" : buf);
-    char feels[16];
-    std::snprintf(feels, sizeof(feels), "%ld\xC2\xB0", std::lround(z.feels_like_c));
-    char feels_text[48];
-    std::snprintf(feels_text, sizeof(feels_text), vigie_tr(VigieText::FEELS_LIKE), feels);
-    std::snprintf(buf, sizeof(buf), "%s \xC2\xB7 %s", vigie_weather_label(z.weather_code), feels_text);
-    set_text(s.condition, buf);
+    const char* icon = vigie_weather_icon(z.weather_code, vigie_is_night(utc, z.utc_offset_s));
+    set_text(s.weather_icon, icon);
+    set_hidden(s.weather_icon, icon[0] == '\0');
+    const bool temperature = vigie_format_temperature(z.temp_c, buf, sizeof(buf));
+    set_text(s.temperature, buf);
+    set_hidden(s.temperature, !temperature);
+    set_text(s.condition, vigie_format_condition(z, buf, sizeof(buf)) ? buf : "");
 
     int row = 0;
-    std::snprintf(buf, sizeof(buf), "%ld km/h %s", std::lround(z.wind_kmh), vigie_compass_point(z.wind_deg, french));
-    set_detail(row++, VigieText::WIND, buf);
-    std::snprintf(buf, sizeof(buf), "%ld km/h", std::lround(z.gust_kmh));
-    set_detail(row++, VigieText::GUSTS, buf);
-    std::snprintf(buf, sizeof(buf), "%u %%", static_cast<unsigned>(z.humidity_pct));
-    set_detail(row++, VigieText::HUMIDITY, buf);
-    if (!z.rain.expected) {
-        std::snprintf(buf, sizeof(buf), "%s", vigie_tr(VigieText::RAIN_NONE));
-    } else if (z.rain.starts_in_min <= 0) {
-        std::snprintf(buf, sizeof(buf), "%s", vigie_tr(VigieText::RAIN_NOW));
-    } else {
-        std::snprintf(buf, sizeof(buf), vigie_tr(VigieText::RAIN_IN_MIN), static_cast<int>(z.rain.starts_in_min));
-    }
-    set_detail(row++, VigieText::RAIN_NEXT_HOUR, buf);
-    if (z.aqi > 0) {
-        std::snprintf(buf, sizeof(buf), "%u \xC2\xB7 %s", static_cast<unsigned>(z.aqi), vigie_aqi_label(z.aqi));
-        set_detail(row++, VigieText::AIR_QUALITY, buf);
-    }
-    if (z.marine.valid && vigie_format_decimal(z.marine.wave_height_m, 1, num, sizeof(num))) {
-        std::snprintf(buf, sizeof(buf), "%s m \xC2\xB7 %ld s", num, std::lround(z.marine.wave_period_s));
-        set_detail(row++, VigieText::WAVES, buf);
-    }
+    if (vigie_format_wind(z.wind_kmh, z.wind_deg, buf, sizeof(buf))) set_detail(row++, VigieText::WIND, buf);
+    if (vigie_format_speed(z.gust_kmh, buf, sizeof(buf))) set_detail(row++, VigieText::GUSTS, buf);
+    if (vigie_format_percent(z.humidity_pct, buf, sizeof(buf))) set_detail(row++, VigieText::HUMIDITY, buf);
+    if (vigie_format_rain_next_hour(z.rain, buf, sizeof(buf))) set_detail(row++, VigieText::RAIN_NEXT_HOUR, buf);
+    if (vigie_format_air_quality(z.aqi, buf, sizeof(buf))) set_detail(row++, VigieText::AIR_QUALITY, buf);
+    if (vigie_format_waves(z.marine, buf, sizeof(buf))) set_detail(row++, VigieText::WAVES, buf);
     while (row < kDetailRows) hide_detail(row++);
 
     // Days: the first forecast day is today; the panel shows the next five days with data.
@@ -403,18 +400,10 @@ void paint_weather(const VigieWorldState& state, uint32_t utc) {
         const VigieDayForecast& d = z.days[i];
         set_text(f.day, vigie_format_day_short(d.label, buf, sizeof(buf)) ? buf : d.label);
         set_text(f.icon, vigie_weather_icon(d.weather_code, false));
-        if (d.rain_probability_pct != kVigieUnknownPct) {
-            std::snprintf(buf, sizeof(buf), "%u %%", static_cast<unsigned>(d.rain_probability_pct));
-        } else if (d.rain_mm > 0.0f && vigie_format_decimal(d.rain_mm, 1, num, sizeof(num))) {
-            std::snprintf(buf, sizeof(buf), "%s mm", num);
-        } else {
-            buf[0] = '\0';
-        }
-        set_text(f.rain, buf);
-        std::snprintf(buf, sizeof(buf), "%ld\xC2\xB0", std::lround(d.tmin_c));
-        set_text(f.tmin, buf);
-        std::snprintf(buf, sizeof(buf), "%ld\xC2\xB0", std::lround(d.tmax_c));
-        set_text(f.tmax, buf);
+        set_text(f.rain, vigie_format_day_rain(d, buf, sizeof(buf)) ? buf : "");
+        // In a table an unknown temperature reads as a dash, so that the columns stay aligned.
+        set_text(f.tmin, vigie_format_temperature(d.tmin_c, buf, sizeof(buf)) ? buf : kDash);
+        set_text(f.tmax, vigie_format_temperature(d.tmax_c, buf, sizeof(buf)) ? buf : kDash);
     }
 }
 

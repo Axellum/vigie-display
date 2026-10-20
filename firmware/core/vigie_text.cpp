@@ -34,6 +34,7 @@ struct Pair {
 constexpr Pair kTexts[] = {
     {"Active alerts", "Alertes en cours"},
     {"No active alert", "Aucune alerte en cours"},
+    {"Alert sources unreachable", "Sources d'alertes injoignables"},
     {"Waiting for data…", "En attente des données…"},
     {"No weather data", "Pas de données météo"},
     {"Wind", "Vent"},
@@ -134,6 +135,7 @@ VigiePixel vigie_map_project(double lat_deg, double lon_deg, int32_t width, int3
 // ─── Labels and icons ───────────────────────────────────────────────────────
 
 const char* vigie_weather_label(uint16_t code) {
+    if (code == kVigieUnknownCode) return "";
     switch (code) {
         case 0: return pick("Clear sky", "Ciel clair");
         case 1: return pick("Mainly clear", "Peu nuageux");
@@ -168,6 +170,7 @@ const char* vigie_weather_label(uint16_t code) {
 }
 
 const char* vigie_weather_icon(uint16_t code, bool night) {
+    if (code == kVigieUnknownCode) return "";
     switch (code) {
         case 0:
         case 1: return night ? "\U000F0594" : "\U000F0599";  // weather-night / weather-sunny
@@ -231,7 +234,7 @@ const char* vigie_hazard_icon(VigieHazardType type) {
 }
 
 const char* vigie_aqi_label(uint16_t aqi) {
-    if (aqi == 0) return "";
+    if (aqi == kVigieUnknownCode) return "";
     if (aqi <= 20) return pick("Good", "bon");
     if (aqi <= 40) return pick("Fair", "correct");
     if (aqi <= 60) return pick("Moderate", "moyen");
@@ -352,4 +355,78 @@ bool vigie_is_night(uint32_t utc, int32_t offset_s) {
     const int64_t t = local_seconds(utc, offset_s);
     const int64_t hour = (t - floor_div(t, 86400) * 86400) / 3600;
     return hour < 7 || hour >= 20;
+}
+
+// ─── Weather texts ──────────────────────────────────────────────────────────
+
+bool vigie_format_temperature(float celsius, char* buf, size_t size) {
+    if (!clear(buf, size) || !vigie_known(celsius)) return false;
+    // An integer has no negative zero: -0.4 °C reads "0°".
+    return written(std::snprintf(buf, size, "%ld\xC2\xB0", std::lround(static_cast<double>(celsius))), size);
+}
+
+bool vigie_format_speed(float kmh, char* buf, size_t size) {
+    if (!clear(buf, size) || !vigie_known(kmh) || kmh < 0.0f) return false;
+    return written(std::snprintf(buf, size, "%ld km/h", std::lround(static_cast<double>(kmh))), size);
+}
+
+bool vigie_format_wind(float kmh, uint16_t from_deg, char* buf, size_t size) {
+    char speed[24];
+    if (!clear(buf, size) || !vigie_format_speed(kmh, speed, sizeof(speed))) return false;
+    if (from_deg == kVigieUnknownCode) return written(std::snprintf(buf, size, "%s", speed), size);
+    return written(std::snprintf(buf, size, "%s %s", speed, vigie_compass_point(from_deg, fr())), size);
+}
+
+bool vigie_format_percent(uint8_t pct, char* buf, size_t size) {
+    if (!clear(buf, size) || pct > 100) return false;
+    return written(std::snprintf(buf, size, fr() ? "%u %%" : "%u%%", static_cast<unsigned>(pct)), size);
+}
+
+bool vigie_format_condition(const VigieZone& zone, char* buf, size_t size) {
+    if (!clear(buf, size)) return false;
+    const char* label = vigie_weather_label(zone.weather_code);
+    char temperature[16];
+    char feels[48] = "";
+    if (vigie_format_temperature(zone.feels_like_c, temperature, sizeof(temperature)) &&
+        !written(std::snprintf(feels, sizeof(feels), vigie_tr(VigieText::FEELS_LIKE), temperature), sizeof(feels))) {
+        feels[0] = '\0';
+    }
+    if (label[0] != '\0' && feels[0] != '\0') {
+        return written(std::snprintf(buf, size, "%s \xC2\xB7 %s", label, feels), size);
+    }
+    if (label[0] == '\0' && feels[0] == '\0') return false;
+    return written(std::snprintf(buf, size, "%s", label[0] != '\0' ? label : feels), size);
+}
+
+bool vigie_format_rain_next_hour(const VigieRainNowcast& rain, char* buf, size_t size) {
+    if (!clear(buf, size) || !rain.known) return false;
+    if (!rain.expected) return written(std::snprintf(buf, size, "%s", vigie_tr(VigieText::RAIN_NONE)), size);
+    if (rain.starts_in_min <= 0) return written(std::snprintf(buf, size, "%s", vigie_tr(VigieText::RAIN_NOW)), size);
+    return written(std::snprintf(buf, size, vigie_tr(VigieText::RAIN_IN_MIN), static_cast<int>(rain.starts_in_min)), size);
+}
+
+bool vigie_format_air_quality(uint16_t aqi, char* buf, size_t size) {
+    if (!clear(buf, size) || aqi == kVigieUnknownCode) return false;
+    return written(std::snprintf(buf, size, "%u \xC2\xB7 %s", static_cast<unsigned>(aqi), vigie_aqi_label(aqi)), size);
+}
+
+bool vigie_format_waves(const VigieMarine& marine, char* buf, size_t size) {
+    char height[16];
+    if (!clear(buf, size) || !marine.valid || !vigie_format_decimal(marine.wave_height_m, 1, height, sizeof(height))) {
+        return false;
+    }
+    if (!vigie_known(marine.wave_period_s)) return written(std::snprintf(buf, size, "%s m", height), size);
+    return written(
+        std::snprintf(buf, size, "%s m \xC2\xB7 %ld s", height, std::lround(static_cast<double>(marine.wave_period_s))),
+        size);
+}
+
+bool vigie_format_day_rain(const VigieDayForecast& day, char* buf, size_t size) {
+    if (!clear(buf, size)) return false;
+    if (day.rain_probability_pct != kVigieUnknownPct) return vigie_format_percent(day.rain_probability_pct, buf, size);
+    char amount[16];
+    if (!vigie_known(day.rain_mm) || day.rain_mm <= 0.0f || !vigie_format_decimal(day.rain_mm, 1, amount, sizeof(amount))) {
+        return false;
+    }
+    return written(std::snprintf(buf, size, "%s mm", amount), size);
 }

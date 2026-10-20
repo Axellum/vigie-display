@@ -47,9 +47,9 @@ void test_nmea() {
 }
 
 const char* kFrame =
-    "HEAD|1792332000|6.3|0\n"
+    "HEAD|1792332000|6.3|0|1.1|waveshare-7b|RED|1|1|1|1|1|0\n"
     "ZONE|GPS|Bay of Biscay|48.0|-4.0|7200|18.4|16.9|82|1004.8|45.4|63.0|255|95|4.2|24|15|8.2|0.5,3.2,7.8,2.1|3.4|11.5|280|2.9|1.8\n"
-    "ZONE|REYK|Reykjavik|64.14|-21.94|0|6.2|3.0|78|998.0|30.0|45.0|180|61|1.2|12|-1|0.0|0,0,0,0|0.00|0.0|0|0.00|0.00\n"
+    "ZONE|REYK|Reykjavik|64.14|-21.94|0|6.2|3.0|78|998.0|30.0|45.0|180|61|1.2|12|-1|0.0|0.00,0.00,0.00,0.00|||||\n"
     "ZONE|NODATA|No weather|10.0|10.0|0||||||||||||||||||\n"
     "RAIN5M|GPS|0.0,0.2,0.8,2.4,5.6,8.2,6.4,3.8,1.9,0.6,0.1,0.0\n"
     "DAY|GPS|2026-10-19|61|13.2|19.1|14.5|85|58.0|4.0\n"
@@ -73,11 +73,15 @@ void test_frame_decoding() {
     CHECK(std::fabs(s.zones[0].rain.slots_5m[5] - 8.2f) < 0.01f);
     CHECK(s.zones[0].day_count == 1 && std::strcmp(s.zones[0].days[0].label, "2026-10-19") == 0);
     CHECK(s.zones[0].days[0].rain_probability_pct == 85);
-    CHECK(!s.zones[1].marine.valid && !s.zones[1].rain.expected);
-    CHECK(!s.zones[2].has_weather);
+    CHECK(s.zones[0].utc_offset_known && s.zones[0].aqi == 24);
+    // Reykjavik: dry for the whole hour (known), no marine data (empty fields).
+    CHECK(s.zones[1].rain.known && !s.zones[1].rain.expected && !s.zones[1].marine.valid);
+    CHECK(!vigie_known(s.zones[1].marine.wave_period_s));
+    CHECK(!s.zones[2].has_weather && !s.zones[2].rain.known && !vigie_known(s.zones[2].temp_c));
+    CHECK(s.zones[2].humidity_pct == kVigieUnknownPct && s.zones[2].weather_code == kVigieUnknownCode);
 
     // Sorted: RED first, then ORANGE, then YELLOW.
-    CHECK(s.hazard_count == 3);
+    CHECK(s.hazards_known && s.hazard_count == 3);
     CHECK_STR(s.hazards[0].id, "USGS-AZORES-01");
     CHECK(s.hazards[0].type == VigieHazardType::TSUNAMI && s.hazards[0].tsunami_warning);
     CHECK(s.hazards[0].tsunami_eta_min > 100);
@@ -85,7 +89,9 @@ void test_frame_decoding() {
     CHECK(s.red_count == 1 && s.orange_count == 1 && s.yellow_count == 1);
 
     // Signed frame: accepted; a wrong CRC is refused and leaves the state untouched.
-    const char* body = "HEAD|1792339999|7.2|0\nHAZ|NHC-CAT5|HURRICANE|RED|25.0|-70.0|260.0|0.0|0|1792339000|NHC|Cat 5\n";
+    const char* body =
+        "HEAD|1792339999|7.2|0|1.1|waveshare-7b|RED|1|0|0|1|1|0\n"
+        "HAZ|NHC-CAT5|HURRICANE|RED|25.0|-70.0|260.0||0|1792339000|NHC|Cat 5\n";
     char good[512], bad[512];
     std::snprintf(good, sizeof(good), "%sEND|%08X\n", body, static_cast<unsigned>(vigie_crc32(body, std::strlen(body))));
     std::snprintf(bad, sizeof(bad), "%sEND|DEADBEEF\n", body);
@@ -95,6 +101,56 @@ void test_frame_decoding() {
     CHECK(s.hazard_count == 3 && s.updated_utc == 1792332000u);
     CHECK(vigie_decode_frame(good, s));
     CHECK(s.hazard_count == 1 && s.hazards[0].type == VigieHazardType::CYCLONE);
+    CHECK(!vigie_known(s.hazards[0].depth_km));
+}
+
+// Empty fields of the contract (vigie-api docs/embedded-frame.md): they stay unknown.
+// Oslo comes from the fallback provider (no feels-like, gust, UV, air quality, nowcast, rain
+// probability); the GPS zone has no weather and no UTC offset; Kp is unknown; HEAD counts
+// every active hazard, more than the HAZ lines sent.
+const char* kPartialFrame =
+    "HEAD|1792332100||0|1.1|waveshare-7b|RED|2|5|17|||0\n"
+    "ZONE|OSLO|Oslo, NO|59.9139|10.7522|7200|3.5||88|998.2|30.2||200|63||||||||||\n"
+    "RAIN5M|OSLO|\n"
+    "DAY|OSLO|2026-10-20|63|1.0|4.5|3.2||38.0|\n"
+    "ZONE|GPS|GPS position|47.75|-3.36|||||||||||||||||||\n"
+    "RAIN5M|GPS|\n"
+    "HAZ|noaa_1234|TORNADO|RED|35.5|-97.5|||0|1792334300|NOAA_NWS|Tornado Warning\n"
+    "HAZ|usgs_1|EARTHQUAKE|RED|35.15|25.2|6.5|18.0|0|1792334500|USGS|M 6.5 Crete\n";
+
+// No hazard source answered the API: severity and counts are empty.
+const char* kNoHazardSource = "HEAD|1792332200|2.0|0|1.1|waveshare-7b|||||0|0|0\n";
+
+void test_unknown_fields() {
+    VigieWorldState s{};
+    s.active_zone = 1;
+    CHECK(vigie_decode_frame(kPartialFrame, s));
+    CHECK(s.active_zone == 1);  // HEAD field 3 is reserved, not a zone index
+    CHECK(!vigie_known(s.kp) && s.solar_level == VigieSolarLevel::QUIET);
+    CHECK(s.hazards_known && s.red_count == 2 && s.orange_count == 5 && s.yellow_count == 17);
+    CHECK(s.zone_count == 2);
+
+    const VigieZone& oslo = s.zones[0];
+    CHECK(oslo.has_weather && oslo.utc_offset_known && oslo.utc_offset_s == 7200);
+    CHECK(std::fabs(oslo.temp_c - 3.5f) < 0.01f && !vigie_known(oslo.feels_like_c) && !vigie_known(oslo.gust_kmh));
+    CHECK(oslo.humidity_pct == 88 && oslo.wind_deg == 200 && oslo.weather_code == 63);
+    CHECK(!vigie_known(oslo.uv) && oslo.aqi == kVigieUnknownCode && !oslo.rain.known && !oslo.marine.valid);
+    CHECK(oslo.day_count == 1 && oslo.days[0].rain_probability_pct == kVigieUnknownPct);
+    CHECK(std::fabs(oslo.days[0].rain_mm - 3.2f) < 0.01f && !vigie_known(oslo.days[0].uv_max));
+
+    const VigieZone& gps = s.zones[1];
+    CHECK(gps.is_mobile_gps && !gps.has_weather && !gps.utc_offset_known);
+    CHECK(!vigie_known(gps.temp_c) && gps.weather_code == kVigieUnknownCode && gps.day_count == 0);
+
+    // Same severity: the hazard with a known value first; unknown value and depth stay unknown.
+    CHECK(s.hazard_count == 2);
+    CHECK_STR(s.hazards[0].id, "usgs_1");
+    CHECK(!vigie_known(s.hazards[1].value) && !vigie_known(s.hazards[1].depth_km));
+
+    // No hazard source: not an all-clear, and the zone index is brought back into range.
+    CHECK(vigie_decode_frame(kNoHazardSource, s));
+    CHECK(!s.hazards_known && s.hazard_count == 0 && s.zone_count == 0 && s.active_zone == 0);
+    CHECK(std::fabs(s.kp - 2.0f) < 0.01f);
 }
 
 void test_zones_nvs_alarm() {
@@ -143,6 +199,7 @@ int main() {
     test_geometry();
     test_nmea();
     test_frame_decoding();
+    test_unknown_fields();
     test_zones_nvs_alarm();
     return test_report("vigie_model");
 }

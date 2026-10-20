@@ -31,7 +31,11 @@ void test_english() {
     CHECK_STR(vigie_hazard_name(VigieHazardType::WILDFIRE), "Wildfire");
     CHECK_STR(vigie_tr(VigieText::ACTIVE_ALERTS), "Active alerts");
     CHECK_STR(vigie_aqi_label(47), "Moderate");
-    CHECK_STR(vigie_aqi_label(0), "");
+    CHECK_STR(vigie_aqi_label(0), "Good");
+    CHECK_STR(vigie_aqi_label(kVigieUnknownCode), "");
+    CHECK_STR(vigie_weather_label(kVigieUnknownCode), "");
+    CHECK_STR(vigie_weather_icon(kVigieUnknownCode, false), "");
+    CHECK_STR(vigie_tr(VigieText::ALERTS_UNKNOWN), "Alert sources unreachable");
 
     CHECK(vigie_format_decimal(6.26f, 1, buf, sizeof(buf)));
     CHECK_STR(buf, "6.3");
@@ -107,11 +111,99 @@ void test_french() {
     CHECK(vigie_language() == VigieLanguage::EN);
 }
 
+// Weather texts: a known value is formatted, an unknown one gives false (hidden on screen).
+void test_weather_texts() {
+    vigie_set_language(VigieLanguage::EN);
+    char buf[96];
+    CHECK(vigie_format_temperature(12.6f, buf, sizeof(buf)));
+    CHECK_STR(buf, "13\xC2\xB0");
+    CHECK(vigie_format_temperature(-0.4f, buf, sizeof(buf)));
+    CHECK_STR(buf, "0\xC2\xB0");
+    CHECK(!vigie_format_temperature(kVigieUnknown, buf, sizeof(buf)) && buf[0] == '\0');
+
+    CHECK(vigie_format_wind(9.7f, 153, buf, sizeof(buf)));
+    CHECK_STR(buf, "10 km/h SSE");
+    CHECK(vigie_format_wind(9.7f, kVigieUnknownCode, buf, sizeof(buf)));
+    CHECK_STR(buf, "10 km/h");
+    CHECK(!vigie_format_wind(kVigieUnknown, 153, buf, sizeof(buf)));
+    CHECK(!vigie_format_speed(kVigieUnknown, buf, sizeof(buf)));
+    CHECK(vigie_format_percent(91, buf, sizeof(buf)));
+    CHECK_STR(buf, "91%");
+    CHECK(!vigie_format_percent(kVigieUnknownPct, buf, sizeof(buf)));
+
+    VigieZone z{};
+    CHECK(!vigie_format_condition(z, buf, sizeof(buf)));  // nothing known
+    z.weather_code = 3;
+    CHECK(vigie_format_condition(z, buf, sizeof(buf)));
+    CHECK_STR(buf, "Overcast");
+    z.feels_like_c = 11.6f;
+    CHECK(vigie_format_condition(z, buf, sizeof(buf)));
+    CHECK_STR(buf, "Overcast \xC2\xB7 feels like 12\xC2\xB0");
+    z.weather_code = kVigieUnknownCode;
+    CHECK(vigie_format_condition(z, buf, sizeof(buf)));
+    CHECK_STR(buf, "feels like 12\xC2\xB0");
+
+    VigieRainNowcast rain{};
+    CHECK(!vigie_format_rain_next_hour(rain, buf, sizeof(buf)));  // unknown, not "none"
+    rain.known = true;
+    CHECK(vigie_format_rain_next_hour(rain, buf, sizeof(buf)));
+    CHECK_STR(buf, "none");
+    rain.expected = true;
+    rain.starts_in_min = 15;
+    CHECK(vigie_format_rain_next_hour(rain, buf, sizeof(buf)));
+    CHECK_STR(buf, "in 15 min");
+    rain.starts_in_min = 0;
+    CHECK(vigie_format_rain_next_hour(rain, buf, sizeof(buf)));
+    CHECK_STR(buf, "now");
+
+    CHECK(vigie_format_air_quality(47, buf, sizeof(buf)));
+    CHECK_STR(buf, "47 \xC2\xB7 Moderate");
+    CHECK(!vigie_format_air_quality(kVigieUnknownCode, buf, sizeof(buf)));
+
+    VigieMarine sea{};
+    CHECK(!vigie_format_waves(sea, buf, sizeof(buf)));
+    sea.valid = true;
+    sea.wave_height_m = 3.4f;
+    CHECK(vigie_format_waves(sea, buf, sizeof(buf)));
+    CHECK_STR(buf, "3.4 m");
+    sea.wave_period_s = 11.5f;
+    CHECK(vigie_format_waves(sea, buf, sizeof(buf)));
+    CHECK_STR(buf, "3.4 m \xC2\xB7 12 s");
+
+    VigieDayForecast day{};
+    CHECK(!vigie_format_day_rain(day, buf, sizeof(buf)));
+    day.rain_mm = 0.0f;
+    CHECK(!vigie_format_day_rain(day, buf, sizeof(buf)));  // a dry day shows nothing
+    day.rain_mm = 5.6f;
+    CHECK(vigie_format_day_rain(day, buf, sizeof(buf)));
+    CHECK_STR(buf, "5.6 mm");
+    day.rain_probability_pct = 98;
+    CHECK(vigie_format_day_rain(day, buf, sizeof(buf)));
+    CHECK_STR(buf, "98%");
+
+    vigie_set_language(VigieLanguage::FR);
+    CHECK(vigie_format_percent(98, buf, sizeof(buf)));
+    CHECK_STR(buf, "98 %");
+    CHECK(vigie_format_wind(30.2f, 270, buf, sizeof(buf)));
+    CHECK_STR(buf, "30 km/h O");
+    CHECK(vigie_format_waves(sea, buf, sizeof(buf)));
+    CHECK_STR(buf, "3,4 m \xC2\xB7 12 s");
+    rain.starts_in_min = 15;
+    CHECK(vigie_format_rain_next_hour(rain, buf, sizeof(buf)));
+    CHECK_STR(buf, "dans 15 min");
+    z.weather_code = 63;
+    CHECK(vigie_format_condition(z, buf, sizeof(buf)));
+    CHECK_STR(buf, "Pluie \xC2\xB7 ressenti 12\xC2\xB0");
+    CHECK_STR(vigie_tr(VigieText::ALERTS_UNKNOWN), "Sources d'alertes injoignables");
+    vigie_set_language(VigieLanguage::EN);
+}
+
 }  // namespace
 
 int main() {
     test_map();
     test_english();
     test_french();
+    test_weather_texts();
     return test_report("vigie_text");
 }

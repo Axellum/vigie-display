@@ -14,8 +14,10 @@
  */
 #pragma once
 
+#include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <limits>
 
 // ─── Capacities ─────────────────────────────────────────────────────────────
 constexpr int kVigieMaxZones = 10;
@@ -30,11 +32,16 @@ constexpr size_t kVigieZoneNameMax = 48;
 constexpr size_t kVigieHazardTitleMax = 96;
 constexpr size_t kVigieSourcesMax = 48;
 constexpr size_t kVigieDayLabelMax = 12;
-constexpr uint8_t kVigieUnknownPct = 255;  // a percentage the API did not give
+// Unknown values. The API sends an empty field when it does not know a value; the display
+// keeps it unknown and never shows it as a number (AGENTS.md rule 3).
+constexpr float kVigieUnknown = std::numeric_limits<float>::quiet_NaN();
+constexpr uint8_t kVigieUnknownPct = 255;      // a percentage
+constexpr uint16_t kVigieUnknownCode = 0xFFFF;  // a WMO code, an AQI, a direction
+inline bool vigie_known(float value) { return std::isfinite(value); }
 
 // NVS block: magic "VIG1" and layout version (bump it when VigieWorldState changes).
 constexpr uint32_t kVigieNvsMagic = 0x56494731UL;
-constexpr uint16_t kVigieNvsVersion = 2;
+constexpr uint16_t kVigieNvsVersion = 3;
 
 // ─── Enumerations ───────────────────────────────────────────────────────────
 enum class VigieHazardType : uint8_t {
@@ -81,7 +88,8 @@ struct VigieGpsFix {
 };
 
 struct VigieRainNowcast {
-    bool expected = false;                    // rain now or within the hour
+    bool known = false;                       // false: no nowcast for this zone (fields empty)
+    bool expected = false;                    // rain now or within the hour (when known)
     int16_t starts_in_min = -1;               // 0 = raining now, -1 = no rain within 60 min
     float max_mm_h = 0.0f;
     float slots_15m[kVigieRainSlots15m] = {};  // mm/h for 0-15, 15-30, 30-45, 45-60 min
@@ -89,23 +97,23 @@ struct VigieRainNowcast {
 };
 
 struct VigieMarine {
-    bool valid = false;
-    float wave_height_m = 0.0f;
-    float wave_period_s = 0.0f;
-    uint16_t wave_direction_deg = 0;  // direction the waves come from
-    float swell_height_m = 0.0f;
-    float current_knots = 0.0f;
+    bool valid = false;  // the wave height is known (0 is a measured calm sea)
+    float wave_height_m = kVigieUnknown;
+    float wave_period_s = kVigieUnknown;
+    uint16_t wave_direction_deg = kVigieUnknownCode;  // direction the waves come from
+    float swell_height_m = kVigieUnknown;
+    float current_knots = kVigieUnknown;
 };
 
 struct VigieDayForecast {
-    char label[kVigieDayLabelMax] = "";  // as sent by the API (day name or ISO date)
-    uint16_t weather_code = 0;           // WMO code
-    float tmin_c = 0.0f;
-    float tmax_c = 0.0f;
-    float rain_mm = 0.0f;
+    char label[kVigieDayLabelMax] = "";  // as sent by the API (ISO date)
+    uint16_t weather_code = kVigieUnknownCode;  // WMO code
+    float tmin_c = kVigieUnknown;
+    float tmax_c = kVigieUnknown;
+    float rain_mm = kVigieUnknown;
     uint8_t rain_probability_pct = kVigieUnknownPct;
-    float wind_max_kmh = 0.0f;
-    float uv_max = 0.0f;
+    float wind_max_kmh = kVigieUnknown;
+    float uv_max = kVigieUnknown;
 };
 
 struct VigieZone {
@@ -114,19 +122,20 @@ struct VigieZone {
     double lat = 0.0;
     double lon = 0.0;
     int32_t utc_offset_s = 0;
-    bool is_mobile_gps = false;  // zone "GPS": follows the receiver's position
-    bool has_weather = false;    // false: the API had no weather for this zone (fields empty)
+    bool utc_offset_known = false;  // false: the clock of this zone is shown in UTC
+    bool is_mobile_gps = false;     // zone "GPS": follows the receiver's position
+    bool has_weather = false;       // false: the API had no weather for this zone (fields empty)
 
-    float temp_c = 0.0f;
-    float feels_like_c = 0.0f;
-    uint8_t humidity_pct = 0;
-    float pressure_hpa = 1013.25f;
-    float wind_kmh = 0.0f;
-    float gust_kmh = 0.0f;
-    uint16_t wind_deg = 0;       // direction the wind comes from
-    uint16_t weather_code = 0;   // WMO code
-    float uv = 0.0f;
-    uint16_t aqi = 0;            // European AQI, 0 = unknown
+    float temp_c = kVigieUnknown;
+    float feels_like_c = kVigieUnknown;
+    uint8_t humidity_pct = kVigieUnknownPct;
+    float pressure_hpa = kVigieUnknown;
+    float wind_kmh = kVigieUnknown;
+    float gust_kmh = kVigieUnknown;
+    uint16_t wind_deg = kVigieUnknownCode;      // direction the wind comes from
+    uint16_t weather_code = kVigieUnknownCode;  // WMO code
+    float uv = kVigieUnknown;
+    uint16_t aqi = kVigieUnknownCode;           // European AQI
 
     VigieRainNowcast rain{};
     VigieMarine marine{};
@@ -144,8 +153,8 @@ struct VigieHazard {
     uint32_t timestamp_utc = 0;
     double lat = 0.0;
     double lon = 0.0;
-    float value = 0.0f;           // magnitude, Kp… (depends on the type)
-    float depth_km = 0.0f;
+    float value = kVigieUnknown;  // magnitude, Kp… (depends on the type)
+    float depth_km = kVigieUnknown;
     bool tsunami_warning = false;
     // Computed on the device, from the GPS fix or else the active zone:
     float distance_km = 0.0f;
@@ -156,13 +165,16 @@ struct VigieHazard {
 struct VigieWorldState {
     uint32_t updated_utc = 0;  // server time of the last frame
 
+    // false: no hazard source answered the API. An empty list is then NOT an all-clear.
+    bool hazards_known = false;
+    // Active hazards by severity, all of them (HEAD), not only the HAZ lines received.
     uint16_t red_count = 0;
     uint16_t orange_count = 0;
     uint16_t yellow_count = 0;
     uint16_t green_count = 0;
 
-    float kp = 0.0f;
-    VigieSolarLevel solar_level = VigieSolarLevel::QUIET;
+    float kp = kVigieUnknown;
+    VigieSolarLevel solar_level = VigieSolarLevel::QUIET;  // meaningful when kp is known
 
     VigieGpsFix gps{};
 
@@ -236,7 +248,8 @@ int8_t vigie_previous_zone(VigieWorldState& state);
 // A frame without an END line is accepted here (vigie_frame_complete() is the strict check).
 bool vigie_frame_crc_ok(const char* frame);
 // Decodes HEAD / ZONE / RAIN5M / DAY / HAZ lines into `state` (zones and hazards replaced,
-// GPS fix and acknowledgements kept), sorts hazards, updates distances and counts.
+// GPS fix and acknowledgements kept), sorts hazards, updates distances and counts (those of
+// HEAD when it gives them). An empty field stays unknown (kVigieUnknown…), never 0.
 // `state` is left untouched when the CRC is wrong. False if nothing could be read.
 bool vigie_decode_frame(const char* frame, VigieWorldState& state);
 

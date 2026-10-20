@@ -12,6 +12,9 @@ All notable changes to this project are documented here. Format:
   five-day forecast; touch the weather panel for the next zone.
 - Real fetch of the vigie-api frame every 60 s; a response is refused unless complete (HTTP 200,
   not filling the buffer, `END|<CRC32>` line, matching CRC). The zone on screen survives refreshes.
+- Unknown values stay unknown: an empty field of the frame is hidden (or reads "–" in a table),
+  never shown as 0; "Alert sources unreachable" instead of "No active alert" when no hazard
+  source answered the API; alert counts of every active hazard (from `HEAD`).
 - English and French screen texts (`vigie_language`).
 - World map drawn from Natural Earth data in the screen's projection (`tools/make_world_map.py`).
 - Signed firmware updates (`vigie_signing_key`), Wi-Fi given after flashing (Improv, access point).
