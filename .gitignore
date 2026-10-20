@@ -1,20 +1,19 @@
-# Environnements et builds ESPHome / PlatformIO
+# ESPHome and Python build output
 .esphome/
 .pioenvs/
 .venv/
 __pycache__/
 *.pyc
-*.pyo
+.pytest_cache/
 
-# Secrets et clés de signature OTA
+# Secrets and firmware signing keys: never in git
 secrets.yaml
 *.pem
 *.key
 
-# Binaires et journaux de compilation
+# Firmware binaries and logs
 *.bin
 *.elf
 *.log
-capture-*.log
 build/
 dist/

@@ -1,3 +1,4 @@
-# Scripts shell lancés par la CI Linux : jamais de CRLF, même dans un checkout Windows
-# (tools/ci/pip_reessai.sh, 28/09/2026).
+# Shell scripts run by the Linux CI: always LF, even in a Windows checkout.
 *.sh text eol=lf
+# The API frame fixture is compared byte for byte (CRC32): never convert its line endings.
+tests/fixtures/*.txt -text
