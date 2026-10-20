@@ -1,0 +1,143 @@
+# The Vigie screen: fonts, world map image and LVGL. The screen itself is built and
+# painted in C++ (firmware/display/vigie_screen.cpp); texts come from firmware/core/
+# vigie_text.cpp, in the language of the `vigie_language` substitution (en, fr).
+#
+# Every MDI icon drawn by the C++ must be listed in the `glyphs:` of its font below, else
+# it renders blank with no build error: tests/test_firmware.py checks both ways.
+
+esphome:
+  includes:
+    - firmware/display/vigie_screen.h
+    - firmware/display/vigie_screen.cpp
+  on_boot:
+    # After every component's setup (LVGL included).
+    - priority: -100
+      then:
+        - lambda: |-
+            vigie_set_language(vigie_language_from_code("${vigie_language}"));
+            VigieScreenFonts fonts;
+            fonts.small = id(font_small);
+            fonts.body = id(font_body);
+            fonts.body_bold = id(font_body_bold);
+            fonts.title = id(font_title);
+            fonts.temperature = id(font_temperature);
+            fonts.icons = id(font_icons);
+            fonts.weather_icon = id(font_weather_icon);
+            vigie_screen_build(fonts, id(world_map));
+            vigie_screen_paint(g_vigie_state, g_vigie_link, millis(), 0);
+
+font:
+  - file: firmware/fonts/roboto_400.ttf
+    id: font_small
+    size: 16
+    bpp: 4
+    glyphsets: [GF_Latin_Core]
+  - file: firmware/fonts/roboto_400.ttf
+    id: font_body
+    size: 20
+    bpp: 4
+    glyphsets: [GF_Latin_Core]
+  - file: firmware/fonts/roboto_700.ttf
+    id: font_body_bold
+    size: 20
+    bpp: 4
+    glyphsets: [GF_Latin_Core]
+  - file: firmware/fonts/roboto_700.ttf
+    id: font_title
+    size: 26
+    bpp: 4
+    glyphsets: [GF_Latin_Core]
+  - file: firmware/fonts/roboto_700.ttf
+    id: font_temperature
+    size: 64
+    bpp: 4
+    glyphs: ["0123456789-°"]
+  - file: firmware/fonts/materialdesignicons-webfont.ttf
+    id: font_icons
+    size: 24
+    bpp: 4
+    glyphs:
+      - "\U000F01E7" # earth (status bar)
+      - "\U000F0142" # chevron-right (weather panel)
+      - "\U000F0026" # alert (unknown hazard type)
+      - "\U000F0430" # pulse (earthquake)
+      - "\U000F1A81" # tsunami
+      - "\U000F1A83" # volcano
+      - "\U000F0898" # weather-hurricane (cyclone)
+      - "\U000F0F38" # weather-tornado
+      - "\U000F0EFA" # home-flood
+      - "\U000F0238" # fire (wildfire)
+      - "\U000F17FE" # sun-wireless (solar storm)
+      - "\U000F0599" # weather-sunny
+      - "\U000F0594" # weather-night
+      - "\U000F0595" # weather-partly-cloudy
+      - "\U000F0F31" # weather-night-partly-cloudy
+      - "\U000F0590" # weather-cloudy
+      - "\U000F0591" # weather-fog
+      - "\U000F0597" # weather-rainy
+      - "\U000F0596" # weather-pouring (also extreme rain)
+      - "\U000F067F" # weather-snowy-rainy
+      - "\U000F0598" # weather-snowy
+      - "\U000F0F36" # weather-snowy-heavy
+      - "\U000F067E" # weather-lightning-rainy
+      - "\U000F0592" # weather-hail
+  - file: firmware/fonts/materialdesignicons-webfont.ttf
+    id: font_weather_icon
+    size: 72
+    bpp: 4
+    glyphs:
+      - "\U000F0599" # weather-sunny
+      - "\U000F0594" # weather-night
+      - "\U000F0595" # weather-partly-cloudy
+      - "\U000F0F31" # weather-night-partly-cloudy
+      - "\U000F0590" # weather-cloudy
+      - "\U000F0591" # weather-fog
+      - "\U000F0597" # weather-rainy
+      - "\U000F0596" # weather-pouring
+      - "\U000F067F" # weather-snowy-rainy
+      - "\U000F0598" # weather-snowy
+      - "\U000F0F36" # weather-snowy-heavy
+      - "\U000F067E" # weather-lightning-rainy
+      - "\U000F0592" # weather-hail
+
+# Natural Earth land masses drawn by tools/make_world_map.py in the screen's projection
+# (firmware/core/vigie_text.h, kVigieMap*).
+image:
+  - file: firmware/images/world_map.png
+    id: world_map
+    type: RGB565
+
+lvgl:
+  id: vigie_lvgl
+  displays: [panel]
+  touchscreens: [touch]
+  rotation: ${board_rotation}
+  color_depth: 16
+  byte_order: little_endian
+  buffer_size: 100%
+  default_font: font_body
+  bg_color: 0x0B1016
+  pages:
+    - id: main_page
+      bg_color: 0x0B1016
+      scrollable: false
+      # ESPHome compiles an LVGL widget type only if the YAML uses it. The screen is built in
+      # C++ (labels, images): these two hidden objects keep both types in the build.
+      widgets:
+        - label:
+            id: lvgl_keeps_labels
+            hidden: true
+            text: ""
+        - image:
+            id: lvgl_keeps_images
+            hidden: true
+            src: world_map
+
+interval:
+  # Status line ("12 s ago") and clock.
+  - interval: 1s
+    then:
+      - lambda: |-
+          const uint32_t now = millis();
+          const uint32_t clock = id(sntp_time).now().is_valid() ? id(sntp_time).now().timestamp : 0;
+          vigie_screen_paint(g_vigie_state, g_vigie_link, now, vigie_current_utc(clock, g_vigie_state, g_vigie_link, now));
