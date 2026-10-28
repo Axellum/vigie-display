@@ -58,8 +58,16 @@ const char* vigie_tr(VigieText id);
 // ─── World map (equirectangular, cropped) ───────────────────────────────────
 // Antarctica and the far north almost never carry an alert: the map spans 60° S to
 // 84° N, which leaves room for the alert list below it.
-constexpr int32_t kVigieMapWidth = 664;
-constexpr int32_t kVigieMapHeight = 266;
+// Size in pixels: per board (`board_map_width` / `board_map_height` of its package, passed as
+// build flags); the defaults are those of the Waveshare 7B. 360° × 144° = 2.5 : 1.
+#ifndef VIGIE_MAP_WIDTH
+#define VIGIE_MAP_WIDTH 664
+#endif
+#ifndef VIGIE_MAP_HEIGHT
+#define VIGIE_MAP_HEIGHT 266
+#endif
+constexpr int32_t kVigieMapWidth = VIGIE_MAP_WIDTH;
+constexpr int32_t kVigieMapHeight = VIGIE_MAP_HEIGHT;
 constexpr double kVigieMapLatNorth = 84.0;
 constexpr double kVigieMapLatSouth = -60.0;
 

@@ -60,6 +60,11 @@ jobs:
     needs: changes
     if: needs.changes.outputs.firmware == 'true'
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        board: [waveshare-7b, tab5]
+    name: firmware (${{ matrix.board }})
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - name: Minimum ESPHome version (min_version of vigie.yaml)
@@ -76,11 +81,13 @@ jobs:
         with:
           yaml-file: vigie.yaml
           version: ${{ steps.floor.outputs.version }}
+          substitutions: |
+            vigie_board=${{ matrix.board }}
       - name: Firmware artifact
         if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
-          name: vigie-firmware-waveshare-7b
+          name: vigie-firmware-${{ matrix.board }}
           path: ${{ steps.build.outputs.name }}
           if-no-files-found: error
           retention-days: 30

@@ -1,0 +1,236 @@
+# M5Stack Tab5: 5" IPS 720x1280 portrait panel (MIPI-DSI) shown in landscape (1280x720, LVGL
+# rotation 270), ESP32-P4 at 360 MHz, 16 MB flash, 32 MB hex PSRAM, ESP32-C6 Wi-Fi over SDIO,
+# two PI4IOE5V6408 I/O expanders (panel and touch resets).
+#
+# Pins and settings come from the M5-Tab5-ESPHome-LVGL project (Tab5/paquets/tab5-hardware.yaml,
+# geometrie-tab5.yaml and ecran-*.yaml, October 2026), where they run every day on a Tab5
+# (ST7123 revision). Notes on the board: docs/hardware.md.
+# Do not change a pin, the boot delay or the panel revision settings without a test on a Tab5.
+
+# Screen size, rotation, map and fonts: layout-tab5.yaml.
+packages:
+  layout: !include layout-tab5.yaml
+
+substitutions:
+  # Panel and touch chips change with the revision of the Tab5 (docs/hardware.md):
+  #   ST7123 (made 14/10/2025 to 28/04/2026, the default, tested every day):
+  #     M5STACK-TAB5-ST7123, touch st7123, 100ms
+  #   ST7121 (made since 28/04/2026, runs for a user of the Tab5 project):
+  #     M5STACK-TAB5-ST7121, touch st7123, 100ms
+  #   ILI9881C (first revision, made 09/05/2025 to 14/10/2025, compiled, never tested):
+  #     M5STACK-TAB5, touch gt911, never
+  # e.g. -s board_tab5_panel M5STACK-TAB5-ST7121
+  board_tab5_panel: M5STACK-TAB5-ST7123
+  board_tab5_touch: st7123
+  # st7123: the component initialises in update() and stops polling once its interrupt is
+  # attached. gt911: interrupt only.
+  board_tab5_touch_interval: 100ms
+  # Screen off: black veil only (firmware/display/panel_power.cpp, mode 0). The ST7123 is a
+  # panel + touch chip: "sleep in" would probably stop the touch that wakes the screen. The
+  # panel does not flicker during an update.
+  board_panel_off_mode: "0"
+  board_panel_dark_during_ota: "0"
+
+esphome:
+  includes:
+    - firmware/display/c6_link.h
+    - firmware/display/c6_link.cpp
+    - firmware/display/panel_power.h
+    - firmware/display/panel_power.cpp
+  build_flags:
+    - -DVIGIE_PANEL_OFF_MODE=${board_panel_off_mode}
+    - -DVIGIE_PANEL_DARK_DURING_OTA=${board_panel_dark_during_ota}
+  on_boot:
+    # The panel reset goes through the PI4IOE5V6408 expander, which needs a second after
+    # start-up: without this wait the screen stayed black after a software restart (Tab5
+    # project, 06/07/2026, reproduced and fixed 3 times). It must block (C delay()), an
+    # ESPHome `delay:` does not hold the setup of the display back.
+    - priority: 700
+      then:
+        - lambda: "delay(1000);"
+
+esp32:
+  board: esp32-p4-evboard
+  flash_size: 16MB
+  framework:
+    type: esp-idf
+    advanced:
+      enable_idf_experimental_features: true
+      execute_from_psram: true
+      compiler_optimization: PERF
+      loop_task_stack_size: 16384
+      # Signed firmware: an OTA update must be signed with the same RSA key. The key never
+      # goes into git (*.pem is ignored); pass its path with -s vigie_signing_key <path>.
+      signed_ota_verification:
+        signing_key: ${vigie_signing_key}
+        signing_scheme: rsa3072
+    sdkconfig_options:
+      CONFIG_SPI_FLASH_YIELD_DURING_ERASE: "y"
+      CONFIG_ESP_DEFAULT_CPU_FREQ_MHZ_360: "y"
+      CONFIG_ESP_DEFAULT_CPU_FREQ_MHZ: "360"
+      CONFIG_ESP_TASK_WDT_TIMEOUT_S: "15"
+      CONFIG_SPIRAM_ALLOW_BSS_SEG_EXTERNAL_MEMORY: "y"
+      CONFIG_CACHE_L2_CACHE_256KB: "y"
+      CONFIG_SPIRAM_MEMTEST: "n"
+      CONFIG_LWIP_DHCP_DOES_ARP_CHECK: "n"
+      CONFIG_LWIP_DHCP_DOES_NOT_CHECK_OFFERED_IP: "y"
+
+psram:
+  mode: hex
+  speed: 200MHz
+
+# Wi-Fi through the ESP32-C6 over SDIO (Tab5 pins; the C6 reset is GPIO15).
+esp32_hosted:
+  variant: esp32c6
+  active_high: true
+  clk_pin: GPIO12
+  cmd_pin: GPIO13
+  d0_pin: GPIO11
+  d1_pin: GPIO10
+  d2_pin: GPIO9
+  d3_pin: GPIO8
+  reset_pin: GPIO15
+  slot: 1
+  sdio_frequency: 20MHz
+  use_psram: true
+
+globals:
+  # Software restarts become CORE resets (firmware/display/c6_link.cpp), so that the SDIO link
+  # to the C6 comes back: same C6 link as the Waveshare 7B. Evaluated in setup(), before the
+  # components.
+  - id: c6_link_ready
+    type: bool
+    initial_value: "c6_link_setup()"
+  - id: ota_in_progress
+    type: bool
+    initial_value: "false"
+
+logger:
+  level: INFO
+  baud_rate: 115200
+  hardware_uart: USB_SERIAL_JTAG
+  tx_buffer_size: 2048
+
+ota:
+  - platform: esphome
+    on_begin:
+      - globals.set: { id: ota_in_progress, value: "true" }
+      - script.execute: { id: panel_during_ota, starting: true }
+    on_abort:
+      - globals.set: { id: ota_in_progress, value: "false" }
+      - script.execute: { id: panel_during_ota, starting: false }
+    on_error:
+      - globals.set: { id: ota_in_progress, value: "false" }
+      - script.execute: { id: panel_during_ota, starting: false }
+
+safe_mode:
+  num_attempts: 10
+  boot_is_good_after: 30s
+
+# Touch, I/O expanders and audio codecs share one bus.
+i2c:
+  - id: bsp_bus
+    sda: GPIO31
+    scl: GPIO32
+    frequency: 400kHz
+
+pi4ioe5v6408:
+  - id: pi4ioe1
+    address: 0x43
+  - id: pi4ioe2
+    address: 0x44
+
+# MIPI-DSI PHY supply: LDO_VO3 at 2.5 V.
+esp_ldo:
+  - voltage: 2.5V
+    channel: 3
+
+display:
+  - id: panel
+    platform: mipi_dsi
+    model: ${board_tab5_panel}
+    dimensions:
+      width: ${board_panel_width}
+      height: ${board_panel_height}
+    reset_pin:
+      pi4ioe5v6408: pi4ioe1
+      number: 4
+    pixel_mode: 16bit
+    color_order: RGB
+    update_interval: never
+    auto_clear_enabled: false
+
+# Same pins on the three revisions. No mirroring (it corrupts the image on an ST7121); LVGL
+# turns touches with the image.
+touchscreen:
+  - id: touch
+    platform: ${board_tab5_touch}
+    update_interval: ${board_tab5_touch_interval}
+    interrupt_pin: GPIO23
+    reset_pin:
+      pi4ioe5v6408: pi4ioe1
+      number: 5
+    calibration:
+      x_min: 0
+      x_max: ${board_panel_width}
+      y_min: 0
+      y_max: ${board_panel_height}
+    on_release:
+      then:
+        - if:
+            condition:
+              light.is_off: backlight
+            then:
+              - light.turn_on: backlight
+
+output:
+  - platform: ledc
+    id: backlight_pwm
+    pin: GPIO22
+    frequency: 1000Hz
+
+light:
+  - platform: monochromatic
+    output: backlight_pwm
+    name: "Backlight"
+    id: backlight
+    restore_mode: RESTORE_DEFAULT_ON
+    initial_state:
+      brightness: 75%
+    default_transition_length: 250ms
+    on_turn_on:
+      - script.execute: panel_wake_up
+    on_turn_off:
+      - lambda: "panel_off(id(panel));"
+      - lvgl.pause:
+
+script:
+  - id: panel_wake_up
+    mode: restart
+    then:
+      - if:
+          condition:
+            lambda: "return panel_wake(id(panel));"
+          then:
+            - delay: 120ms
+      - if:
+          condition:
+            lambda: "return id(backlight).remote_values.is_on() && !(panel_dark_during_ota() && id(ota_in_progress));"
+          then:
+            - lambda: "panel_on(id(panel));"
+            - lvgl.resume:
+  - id: panel_during_ota
+    parameters:
+      starting: bool
+    then:
+      - if:
+          condition:
+            lambda: "return panel_dark_during_ota() && id(backlight).remote_values.is_on();"
+          then:
+            - if:
+                condition:
+                  lambda: "return starting;"
+                then:
+                  - lambda: "panel_off(id(panel));"
+                else:
+                  - script.execute: panel_wake_up

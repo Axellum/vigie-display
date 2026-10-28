@@ -2,7 +2,8 @@
  * @file vigie_screen.h
  * @brief The Vigie screen (LVGL 9.5), built in C++ once and repainted from the world state.
  *
- * Layout for 1024×600 (Waveshare 7B): status bar on top; world map with the active
+ * Landscape layout drawn for 1024×600 (Waveshare 7B) and scaled for other boards (1280×720
+ * on the M5Stack Tab5; vigie_screen.cpp, "Geometry"): status bar on top; world map with the active
  * hazards (dot colour = severity) and the watched zones; the five most severe alerts
  * under the map; on the right, the weather of the active zone. Touching the weather panel
  * shows the next zone (distances are then measured from it).
@@ -26,6 +27,7 @@ class Image;
 }  // namespace esphome
 
 struct VigieScreenFonts {
+    // Sizes on the 7B; other boards scale them (`board_font_*` of the board package).
     const esphome::font::Font* small = nullptr;         // 16 px, regular
     const esphome::font::Font* body = nullptr;          // 20 px, regular
     const esphome::font::Font* body_bold = nullptr;     // 20 px, bold

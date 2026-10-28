@@ -1,0 +1,25 @@
+# Screen geometry of the Waveshare ESP32-P4 7B, without its hardware: used by its board package
+# (board-waveshare-7b.yaml) and by the off-device rendering (vigie-render.yaml).
+#
+# The layout of firmware/display/vigie_screen.cpp is drawn for this screen: scale 100. The map is
+# 2.5 : 1 (360° × 144°); its image is firmware/images/world_map_<w>x<h>.png
+# (python tools/make_world_map.py). Font sizes in pixels.
+
+substitutions:
+  # Screen as LVGL sees it (landscape) and the panel as its driver sees it (same here).
+  board_screen_width: "1024"
+  board_screen_height: "600"
+  board_panel_width: "1024"
+  board_panel_height: "600"
+  # 0 = native orientation of the panel, no software rotation (69 ms per full frame instead
+  # of 83 ms measured with 180). Use 180 for a board mounted the other way up.
+  board_rotation: "0"
+  board_layout_scale: "100"
+  board_map_width: "664"
+  board_map_height: "266"
+  board_font_small: "16"
+  board_font_body: "20"
+  board_font_title: "26"
+  board_font_temperature: "64"
+  board_font_icons: "24"
+  board_font_weather_icon: "72"

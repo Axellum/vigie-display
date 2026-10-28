@@ -5,10 +5,18 @@
 # Every MDI icon drawn by the C++ must be listed in the `glyphs:` of its font below, else
 # it renders blank with no build error: tests/test_firmware.py checks both ways.
 
+# Sizes come from the board package (board_screen_*, board_map_*, board_layout_scale and
+# board_font_*): the layout of vigie_screen.cpp is drawn for 1024×600 and scaled from them.
 esphome:
   includes:
     - firmware/display/vigie_screen.h
     - firmware/display/vigie_screen.cpp
+  build_flags:
+    - -DVIGIE_SCREEN_WIDTH=${board_screen_width}
+    - -DVIGIE_SCREEN_HEIGHT=${board_screen_height}
+    - -DVIGIE_LAYOUT_SCALE=${board_layout_scale}
+    - -DVIGIE_MAP_WIDTH=${board_map_width}
+    - -DVIGIE_MAP_HEIGHT=${board_map_height}
   on_boot:
     # After every component's setup (LVGL included).
     - priority: -100
@@ -29,32 +37,32 @@ esphome:
 font:
   - file: firmware/fonts/roboto_400.ttf
     id: font_small
-    size: 16
+    size: ${board_font_small}
     bpp: 4
     glyphsets: [GF_Latin_Core]
   - file: firmware/fonts/roboto_400.ttf
     id: font_body
-    size: 20
+    size: ${board_font_body}
     bpp: 4
     glyphsets: [GF_Latin_Core]
   - file: firmware/fonts/roboto_700.ttf
     id: font_body_bold
-    size: 20
+    size: ${board_font_body}
     bpp: 4
     glyphsets: [GF_Latin_Core]
   - file: firmware/fonts/roboto_700.ttf
     id: font_title
-    size: 26
+    size: ${board_font_title}
     bpp: 4
     glyphsets: [GF_Latin_Core]
   - file: firmware/fonts/roboto_700.ttf
     id: font_temperature
-    size: 64
+    size: ${board_font_temperature}
     bpp: 4
     glyphs: ["0123456789-°"]
   - file: firmware/fonts/materialdesignicons-webfont.ttf
     id: font_icons
-    size: 24
+    size: ${board_font_icons}
     bpp: 4
     glyphs:
       - "\U000F01E7" # earth (status bar)
@@ -83,7 +91,7 @@ font:
       - "\U000F0592" # weather-hail
   - file: firmware/fonts/materialdesignicons-webfont.ttf
     id: font_weather_icon
-    size: 72
+    size: ${board_font_weather_icon}
     bpp: 4
     glyphs:
       - "\U000F0599" # weather-sunny
@@ -101,9 +109,9 @@ font:
       - "\U000F0592" # weather-hail
 
 # Natural Earth land masses drawn by tools/make_world_map.py in the screen's projection
-# (firmware/core/vigie_text.h, kVigieMap*).
+# (firmware/core/vigie_text.h), one image per map size of a board package.
 image:
-  - file: firmware/images/world_map.png
+  - file: firmware/images/world_map_${board_map_width}x${board_map_height}.png
     id: world_map
     type: RGB565
 

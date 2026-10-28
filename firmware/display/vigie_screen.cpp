@@ -2,8 +2,9 @@
  * @file vigie_screen.cpp
  * @brief Implementation of vigie_screen.h (see the header).
  *
- * Geometry is for a 1024×600 landscape screen. Colours are the palette below (the world
- * map image uses the same ocean and land colours, tools/make_world_map.py).
+ * Geometry: the 1024×600 layout, scaled per board (see "Geometry" below). Colours are the
+ * palette below (the world map image uses the same ocean and land colours,
+ * tools/make_world_map.py).
  */
 #include "vigie_screen.h"
 
@@ -33,19 +34,41 @@ constexpr uint32_t kYellow = 0xFFC53D;
 constexpr uint32_t kOrange = 0xF76B15;
 constexpr uint32_t kRed = 0xE5484D;
 
-// ─── Geometry (1024×600) ────────────────────────────────────────────────────
-constexpr int kMargin = 12;
+// ─── Geometry ───────────────────────────────────────────────────────────────
+// Drawn for 1024×600 (Waveshare 7B). Another board gives its landscape size, its map size
+// and a scale in percent (board package: `board_screen_*`, `board_map_*`,
+// `board_layout_scale`, passed as build flags): every length is the 1024×600 one times the
+// scale, and what sits on a right or bottom edge is placed from that edge, so the map and
+// the side panel take the rest. At 100 the result is the 1024×600 layout, pixel for pixel.
+#ifndef VIGIE_SCREEN_WIDTH
+#define VIGIE_SCREEN_WIDTH 1024
+#endif
+#ifndef VIGIE_SCREEN_HEIGHT
+#define VIGIE_SCREEN_HEIGHT 600
+#endif
+#ifndef VIGIE_LAYOUT_SCALE
+#define VIGIE_LAYOUT_SCALE 100
+#endif
+constexpr int kScreenW = VIGIE_SCREEN_WIDTH;
+constexpr int kScreenH = VIGIE_SCREEN_HEIGHT;
+// A 1024×600 length at the scale of this board.
+constexpr int sc(int v) { return (v * VIGIE_LAYOUT_SCALE + 50) / 100; }
+
+constexpr int kMargin = sc(12);
 constexpr int kMapX = kMargin;
-constexpr int kMapY = 60;
-constexpr int kAlertsY = kMapY + kVigieMapHeight + 8;  // 334
+constexpr int kMapY = sc(60);
+constexpr int kAlertsY = kMapY + kVigieMapHeight + sc(8);    // 7B: 334
 constexpr int kAlertsW = kVigieMapWidth;
-constexpr int kAlertsH = 600 - kMargin - kAlertsY;  // 254
-constexpr int kSideX = kMapX + kVigieMapWidth + kMargin;  // 688
-constexpr int kSideW = 1024 - kMargin - kSideX;           // 324
-constexpr int kSideH = 600 - kMargin - kMapY;             // 528
+constexpr int kAlertsH = kScreenH - kMargin - kAlertsY;      // 7B: 254
+constexpr int kSideX = kMapX + kVigieMapWidth + kMargin;     // 7B: 688
+constexpr int kSideW = kScreenW - kMargin - kSideX;          // 7B: 324
+constexpr int kSideH = kScreenH - kMargin - kMapY;           // 7B: 528
 constexpr int kAlertRows = 5;
-constexpr int kAlertRowY = 46;
-constexpr int kAlertRowH = 41;
+constexpr int kAlertRowY = sc(46);
+constexpr int kAlertRowH = sc(41);
+static_assert(kAlertRowY + kAlertRows * kAlertRowH <= kAlertsH, "the alert rows overflow their panel: smaller map or scale");
+static_assert(sc(366) + 5 * sc(31) <= kSideH, "the forecast overflows the weather panel: smaller scale");
+static_assert(kSideW >= sc(300), "the weather panel is too narrow: smaller map");
 constexpr int kDetailRows = 6;
 constexpr int kForecastRows = 5;
 
@@ -120,12 +143,12 @@ uint32_t severity_colour(VigieSeverity s) {
 
 int severity_dot_size(VigieSeverity s) {
     switch (s) {
-        case VigieSeverity::RED: return 16;
-        case VigieSeverity::ORANGE: return 13;
-        case VigieSeverity::YELLOW: return 10;
-        case VigieSeverity::GREEN: return 8;
+        case VigieSeverity::RED: return sc(16);
+        case VigieSeverity::ORANGE: return sc(13);
+        case VigieSeverity::YELLOW: return sc(10);
+        case VigieSeverity::GREEN: return sc(8);
     }
-    return 8;
+    return sc(8);
 }
 
 // ─── Builders ───────────────────────────────────────────────────────────────
@@ -240,7 +263,7 @@ void paint_map(const VigieWorldState& state) {
         const int size = severity_dot_size(h.severity);
         set_area(dot, p.x - size / 2, p.y - size / 2, size);
         set_bg_colour(dot, severity_colour(h.severity));
-        const int outline = h.severity == VigieSeverity::RED ? 4 : 0;
+        const int outline = h.severity == VigieSeverity::RED ? sc(4) : 0;
         if (lv_obj_get_style_outline_width(dot, LV_PART_MAIN) != outline) lv_obj_set_style_outline_width(dot, outline, 0);
         set_hidden(dot, false);
     }
@@ -254,11 +277,11 @@ void paint_map(const VigieWorldState& state) {
         }
         const VigiePixel p = vigie_map_project(state.zones[i].lat, state.zones[i].lon, kVigieMapWidth, kVigieMapHeight);
         const bool active = i == state.active_zone;
-        const int size = active ? 14 : 6;
+        const int size = active ? sc(14) : sc(6);
         set_area(mark, p.x - size / 2, p.y - size / 2, size);
         const lv_opa_t opa = active ? LV_OPA_TRANSP : LV_OPA_COVER;
         if (lv_obj_get_style_bg_opa(mark, LV_PART_MAIN) != opa) lv_obj_set_style_bg_opa(mark, opa, 0);
-        const int border = active ? 2 : 0;
+        const int border = active ? sc(2) : 0;
         if (lv_obj_get_style_border_width(mark, LV_PART_MAIN) != border) lv_obj_set_style_border_width(mark, border, 0);
         set_hidden(mark, !p.inside);
     }
@@ -424,19 +447,21 @@ void vigie_screen_build(const VigieScreenFonts& f, esphome::image::Image* world_
     lv_obj_set_style_bg_opa(scr, LV_OPA_COVER, 0);
     lv_obj_remove_flag(scr, LV_OBJ_FLAG_SCROLLABLE);
 
-    // Status bar.
-    lv_obj_t* globe = label(scr, f.icons, kAccent, 16, 14);
+    // Status bar (clock and date from the right edge).
+    lv_obj_t* globe = label(scr, f.icons, kAccent, sc(16), sc(14));
     lv_label_set_text(globe, "\U000F01E7");  // earth
-    lv_obj_t* brand = label(scr, f.body_bold, kText, 48, 15);
-    lv_obj_set_style_text_letter_space(brand, 2, 0);
+    lv_obj_t* brand = label(scr, f.body_bold, kText, sc(48), sc(15));
+    lv_obj_set_style_text_letter_space(brand, sc(2), 0);
     lv_label_set_text(brand, "VIGIE");
-    s.status_dot = box(scr, 128, 22, 10, 10, kTextDim, LV_RADIUS_CIRCLE);
-    s.status_text = label(scr, f.small, kTextDim, 146, 17, 420);
-    s.date = label(scr, f.body, kTextDim, 560, 15, 340, LV_TEXT_ALIGN_RIGHT);
-    s.clock = label(scr, f.title, kText, 912, 11, 100, LV_TEXT_ALIGN_RIGHT);
+    s.status_dot = box(scr, sc(128), sc(22), sc(10), sc(10), kTextDim, LV_RADIUS_CIRCLE);
+    s.status_text = label(scr, f.small, kTextDim, sc(146), sc(17), sc(420));
+    const int clock_x = kScreenW - kMargin - sc(100);                // 7B: 912
+    const int date_x = clock_x - sc(12) - sc(340);                   // 7B: 560
+    s.date = label(scr, f.body, kTextDim, date_x, sc(15), sc(340), LV_TEXT_ALIGN_RIGHT);
+    s.clock = label(scr, f.title, kText, clock_x, sc(11), sc(100), LV_TEXT_ALIGN_RIGHT);
 
     // Map.
-    s.map = box(scr, kMapX, kMapY, kVigieMapWidth, kVigieMapHeight, kOcean, 10);
+    s.map = box(scr, kMapX, kMapY, kVigieMapWidth, kVigieMapHeight, kOcean, sc(10));
     lv_obj_set_style_clip_corner(s.map, true, 0);
     if (world_map != nullptr) {
         lv_obj_t* img = lv_image_create(s.map);
@@ -444,66 +469,76 @@ void vigie_screen_build(const VigieScreenFonts& f, esphome::image::Image* world_
         lv_obj_set_pos(img, 0, 0);
     }
     for (auto& dot : s.hazard_dots) {
-        dot = box(s.map, 0, 0, 8, 8, kGreen, LV_RADIUS_CIRCLE);
-        lv_obj_set_style_border_width(dot, 2, 0);
+        dot = box(s.map, 0, 0, sc(8), sc(8), kGreen, LV_RADIUS_CIRCLE);
+        lv_obj_set_style_border_width(dot, sc(2), 0);
         lv_obj_set_style_border_color(dot, lv_color_hex(kOcean), 0);
         lv_obj_set_style_outline_color(dot, lv_color_hex(kRed), 0);
         lv_obj_set_style_outline_opa(dot, LV_OPA_40, 0);
         lv_obj_add_flag(dot, LV_OBJ_FLAG_HIDDEN);
     }
     for (auto& mark : s.zone_marks) {
-        mark = box(s.map, 0, 0, 6, 6, kAccent, LV_RADIUS_CIRCLE);
+        mark = box(s.map, 0, 0, sc(6), sc(6), kAccent, LV_RADIUS_CIRCLE);
         lv_obj_set_style_border_color(mark, lv_color_hex(kText), 0);
         lv_obj_add_flag(mark, LV_OBJ_FLAG_HIDDEN);
     }
 
     // Alerts.
-    lv_obj_t* alerts = box(scr, kMapX, kAlertsY, kAlertsW, kAlertsH, kPanel, 10);
-    s.alerts_title = label(alerts, f.body_bold, kText, 16, 12, 300);
+    lv_obj_t* alerts = box(scr, kMapX, kAlertsY, kAlertsW, kAlertsH, kPanel, sc(10));
+    const int pad = sc(16);  // inner margin of the panels
+    s.alerts_title = label(alerts, f.body_bold, kText, pad, sc(12), sc(300));
     const uint32_t count_colours[3] = {kRed, kOrange, kYellow};
     for (int k = 0; k < 3; ++k) {
-        const int gx = kAlertsW - 16 - 60 * (3 - k);
-        s.count_dots[k] = box(alerts, gx + 8, 19, 10, 10, count_colours[k], LV_RADIUS_CIRCLE);
-        s.counts[k] = label(alerts, f.body, kTextDim, gx + 24, 12, 36);
+        const int gx = kAlertsW - pad - sc(60) * (3 - k);
+        s.count_dots[k] = box(alerts, gx + sc(8), sc(19), sc(10), sc(10), count_colours[k], LV_RADIUS_CIRCLE);
+        s.counts[k] = label(alerts, f.body, kTextDim, gx + sc(24), sc(12), sc(36));
     }
-    s.alerts_empty = label(alerts, f.body, kTextDim, 16, 120, kAlertsW - 32, LV_TEXT_ALIGN_CENTER);
+    s.alerts_empty = label(alerts, f.body, kTextDim, pad, sc(120), kAlertsW - 2 * pad, LV_TEXT_ALIGN_CENTER);
+    // Distance and age on the right edge; the title takes the rest.
+    const int distance_w = sc(176);
+    const int distance_x = kAlertsW - pad - distance_w;            // 7B: 472
+    const int title_x = sc(64);
+    const int title_w = distance_x - sc(8) - title_x;              // 7B: 400
     for (int r = 0; r < kAlertRows; ++r) {
         AlertRow& row = s.rows[r];
         const int y = kAlertRowY + r * kAlertRowH;
-        row.bar = box(alerts, 16, y + 7, 4, 27, kGreen, 2);
-        row.icon = label(alerts, f.icons, kText, 28, y + 8, 30);
-        row.title = label(alerts, f.body_bold, kText, 64, y + 1, 400);
-        row.subtitle = label(alerts, f.small, kTextDim, 64, y + 23, 400);
-        row.distance = label(alerts, f.body, kText, 472, y + 1, 176, LV_TEXT_ALIGN_RIGHT);
-        row.age = label(alerts, f.small, kTextDim, 472, y + 23, 176, LV_TEXT_ALIGN_RIGHT);
+        row.bar = box(alerts, pad, y + sc(7), sc(4), sc(27), kGreen, sc(2));
+        row.icon = label(alerts, f.icons, kText, sc(28), y + sc(8), sc(30));
+        row.title = label(alerts, f.body_bold, kText, title_x, y + sc(1), title_w);
+        row.subtitle = label(alerts, f.small, kTextDim, title_x, y + sc(23), title_w);
+        row.distance = label(alerts, f.body, kText, distance_x, y + sc(1), distance_w, LV_TEXT_ALIGN_RIGHT);
+        row.age = label(alerts, f.small, kTextDim, distance_x, y + sc(23), distance_w, LV_TEXT_ALIGN_RIGHT);
     }
 
-    // Weather of the active zone (touch: next zone).
-    s.side = box(scr, kSideX, kMapY, kSideW, kSideH, kPanel, 10);
+    // Weather of the active zone (touch: next zone). Right-aligned columns from the right edge.
+    s.side = box(scr, kSideX, kMapY, kSideW, kSideH, kPanel, sc(10));
     lv_obj_add_flag(s.side, LV_OBJ_FLAG_CLICKABLE);
     lv_obj_add_event_cb(s.side, on_side_clicked, LV_EVENT_CLICKED, nullptr);
-    s.zone_name = label(s.side, f.title, kText, 16, 12, 226);
-    s.zone_index = label(s.side, f.small, kTextDim, 244, 18, 44, LV_TEXT_ALIGN_RIGHT);
-    lv_obj_t* chevron = label(s.side, f.icons, kAccent, 290, 14);
+    const int chevron_x = kSideW - sc(34);                          // 7B: 290
+    const int index_x = chevron_x - sc(46);                         // 7B: 244
+    s.zone_name = label(s.side, f.title, kText, pad, sc(12), index_x - sc(2) - pad);
+    s.zone_index = label(s.side, f.small, kTextDim, index_x, sc(18), sc(44), LV_TEXT_ALIGN_RIGHT);
+    lv_obj_t* chevron = label(s.side, f.icons, kAccent, chevron_x, sc(14));
     lv_label_set_text(chevron, "\U000F0142");  // chevron-right
-    s.zone_coords = label(s.side, f.small, kTextDim, 16, 46, kSideW - 32);
-    s.weather_icon = label(s.side, f.weather_icon, kText, 12, 70);
-    s.temperature = label(s.side, f.temperature, kText, 100, 66);
-    s.condition = label(s.side, f.body, kText, 16, 150, kSideW - 32);
+    s.zone_coords = label(s.side, f.small, kTextDim, pad, sc(46), kSideW - 2 * pad);
+    s.weather_icon = label(s.side, f.weather_icon, kText, sc(12), sc(70));
+    s.temperature = label(s.side, f.temperature, kText, sc(100), sc(66));
+    s.condition = label(s.side, f.body, kText, pad, sc(150), kSideW - 2 * pad);
     for (int i = 0; i < kDetailRows; ++i) {
-        const int y = 186 + i * 28;
-        s.details[i].label = label(s.side, f.small, kTextDim, 16, y + 3, 140);
-        s.details[i].value = label(s.side, f.body, kText, 120, y, kSideW - 136, LV_TEXT_ALIGN_RIGHT);
+        const int y = sc(186) + i * sc(28);
+        s.details[i].label = label(s.side, f.small, kTextDim, pad, y + sc(3), sc(140));
+        s.details[i].value = label(s.side, f.body, kText, sc(120), y, kSideW - pad - sc(120), LV_TEXT_ALIGN_RIGHT);
     }
-    s.separator = box(s.side, 16, 356, kSideW - 32, 1, kLine, 0);
+    s.separator = box(s.side, pad, sc(356), kSideW - 2 * pad, 1, kLine, 0);
+    const int tmax_x = kSideW - pad - sc(58);                       // 7B: 250
+    const int tmin_x = tmax_x - sc(6) - sc(56);                     // 7B: 188
     for (int i = 0; i < kForecastRows; ++i) {
         ForecastRow& row = s.forecast[i];
-        const int y = 366 + i * 31;
-        row.day = label(s.side, f.body_bold, kText, 16, y, 64);
-        row.icon = label(s.side, f.icons, kText, 84, y, 30);
-        row.rain = label(s.side, f.small, kTextDim, 118, y + 3, 70);
-        row.tmin = label(s.side, f.body, kTextDim, 188, y, 56, LV_TEXT_ALIGN_RIGHT);
-        row.tmax = label(s.side, f.body_bold, kText, 250, y, 58, LV_TEXT_ALIGN_RIGHT);
+        const int y = sc(366) + i * sc(31);
+        row.day = label(s.side, f.body_bold, kText, pad, y, sc(64));
+        row.icon = label(s.side, f.icons, kText, sc(84), y, sc(30));
+        row.rain = label(s.side, f.small, kTextDim, sc(118), y + sc(3), tmin_x - sc(118));
+        row.tmin = label(s.side, f.body, kTextDim, tmin_x, y, sc(56), LV_TEXT_ALIGN_RIGHT);
+        row.tmax = label(s.side, f.body_bold, kText, tmax_x, y, sc(58), LV_TEXT_ALIGN_RIGHT);
     }
     s.built = true;
 }

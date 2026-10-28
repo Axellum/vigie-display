@@ -7,12 +7,11 @@
 # 2026), from which this file is taken. Notes on the board: docs/hardware.md.
 # Do not change a pin without reading it again in the BSP or on the schematic.
 
+# Screen size, rotation, map and fonts: layout-waveshare-7b.yaml.
+packages:
+  layout: !include layout-waveshare-7b.yaml
+
 substitutions:
-  board_screen_width: "1024"
-  board_screen_height: "600"
-  # 0 = native orientation of the panel, no software rotation (69 ms per full frame instead
-  # of 83 ms measured with 180). Use 180 for a board mounted the other way up.
-  board_rotation: "0"
   # Screen off: black veil + DCS "display off" + "sleep in" (the analog backlight never goes
   # fully dark), and a dark panel during a firmware update (it flickered). firmware/display/
   # panel_power.cpp.
@@ -127,8 +126,8 @@ display:
     platform: mipi_dsi
     model: WAVESHARE-ESP32-P4-WIFI6-TOUCH-LCD-7B
     dimensions:
-      width: ${board_screen_width}
-      height: ${board_screen_height}
+      width: ${board_panel_width}
+      height: ${board_panel_height}
     pixel_mode: 16bit
     color_order: RGB
     update_interval: never
