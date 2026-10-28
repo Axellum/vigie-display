@@ -1,3 +1,5 @@
+<img src="site/favicon.svg" alt="" width="72" height="72">
+
 # Vigie display
 
 World hazards and local weather on an ESP32-P4 touch screen, without Home Assistant.

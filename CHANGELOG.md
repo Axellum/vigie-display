@@ -7,6 +7,8 @@ All notable changes to this project are documented here. Format:
 
 ### Added
 
+- The Vigie logo, an eye with an orange iris, as the project page's icon (`site/favicon.svg`) and at the top
+  of the README, the same as the website's.
 - M5Stack Tab5 (1280×720, `-s vigie_board tab5`): board package taken from the
   M5-Tab5-ESPHome-LVGL project (ST7123 by default; ST7121 and ILI9881C by substitution), the
   screen layout scaled to 120 % with a 800×320 map (ADR 0003). Runs on a Tab5 ST7121 (Wi-Fi,
