@@ -1,0 +1,82 @@
+name: Render
+
+# The screen rendered off the device (vigie-render.yaml): the firmware's LVGL screen and C++,
+# built for ESPHome's `host` platform, fed with a live frame of the public vigie-api (the
+# fixture if the API does not answer), one PNG per board layout and language. The PNGs are
+# uploaded as artifacts: they show the layout of every board without flashing one, and the
+# screenshots of the documentation and of the site (site/images/) come from them.
+# The job fails if the render does not build, does not write its picture, or writes one that
+# is not the board's landscape size.
+
+on:
+  pull_request:
+    paths:
+      - "vigie-render.yaml"
+      - "firmware/**"
+      - "tools/render_png.py"
+      - ".github/workflows/render.yml"
+  push:
+    branches: [main]
+    paths:
+      - "vigie-render.yaml"
+      - "firmware/**"
+      - "tools/render_png.py"
+      - ".github/workflows/render.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: render-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  render:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        board: [waveshare-7b, tab5]
+        language: [en, fr]
+    name: render (${{ matrix.board }}, ${{ matrix.language }})
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
+        with:
+          python-version: "3.13"
+      - name: ESPHome at the minimum version (min_version of vigie.yaml) and Pillow
+        run: |
+          v=$(sed -n 's/^[[:space:]]*min_version:[[:space:]]*\([0-9][0-9.]*\).*/\1/p' vigie.yaml | head -n 1)
+          test -n "$v"
+          pip install "esphome==$v" "pillow>=10.0"
+      - name: Frame (public vigie-api, or the fixture)
+        id: frame
+        run: |
+          url="https://vigie.auxfilsdesidees.fr/v1/embedded/frame?device_type=${{ matrix.board }}"
+          if curl -fsS --max-time 20 -A "vigie-display-render (GitHub Actions)" -o "$RUNNER_TEMP/frame.txt" "$url" \
+             && tail -n 1 "$RUNNER_TEMP/frame.txt" | grep -q '^END|'; then
+            echo "Frame: live, from $url" >> "$GITHUB_STEP_SUMMARY"
+          else
+            cp tests/fixtures/api_frame.txt "$RUNNER_TEMP/frame.txt"
+            echo "Frame: the fixture (the API did not answer)" >> "$GITHUB_STEP_SUMMARY"
+          fi
+          echo "path=$RUNNER_TEMP/frame.txt" >> "$GITHUB_OUTPUT"
+      - name: Build
+        run: >-
+          esphome -s vigie_board ${{ matrix.board }} -s vigie_language ${{ matrix.language }}
+          -s vigie_frame "${{ steps.frame.outputs.path }}" compile vigie-render.yaml
+      - name: Run and convert
+        run: |
+          prog=$(find .esphome/build/vigie-render -name program -type f | head -n 1)
+          test -n "$prog"
+          mkdir -p render
+          ESPHOME_SNAPSHOT_DIR="$PWD/render" timeout 60 "$prog"
+          python tools/render_png.py render ${{ matrix.board }}
+          ls -l render >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: render-${{ matrix.board }}-${{ matrix.language }}
+          path: render/*.png
+          if-no-files-found: error
+          retention-days: 30
