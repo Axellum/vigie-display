@@ -12,6 +12,8 @@
  * blocks the remaining light; the DCS commands really stop the panel.
  * Modes (`VIGIE_PANEL_OFF_MODE`): 0 = veil only; 1 = veil + 0x28; 2 = veil + 0x28 + 0x10.
  * EK79007 (7B): 2, tested on the board on 2026-10-17 (touch is a separate GT911).
+ * Tab5: 0, as in the Tab5 project (its ST7123 / ST7121 chips also carry the touch: "sleep in"
+ * would probably stop the touch that wakes the screen; never tried).
  * DCS timings (120 ms between sleep in/out, 120 ms after sleep out before display on): the
  * first two are held here (blocking wait of the remainder, at most 120 ms), the third by
  * the `delay` of the `panel_wake_up` script.
