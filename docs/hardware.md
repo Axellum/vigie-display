@@ -12,7 +12,7 @@ Vigie display runs on two ESP32-P4 touch screens. Both use an ESP32-C6 co-proces
 | PSRAM | 32 MB, hex, 200 MHz | 32 MB, hex, 200 MHz |
 | Touch | GT911 | in the panel chip (ST7123 / ST7121) or GT911 (ILI9881C) |
 | Vigie firmware (CI build, 2026-10-28) | 2.0 MB (12 % of its app partition), RAM 25.5 % | 2.2 MB (27 % of its app partition), RAM 29.9 % |
-| Status | ✅ tested on the board (2026-10-20) | 🧪 compiled; board settings tested daily in the Tab5 project, Vigie itself not run on a Tab5 yet |
+| Status | ✅ tested on the board (2026-10-20) | ✅ runs on a Tab5 ST7121 (2026-10-28: Wi-Fi, frame from the public API over HTTPS); ST7123 and ILI9881C compiled |
 
 Board packages: `firmware/packages/board-<board>.yaml` (hardware) and
 `firmware/packages/layout-<board>.yaml` (screen size, rotation, map and fonts). Both sets of
@@ -59,7 +59,7 @@ See the Tab5 project's `docs/waveshare-7b.md` for the full write-up.
 | :--- | :--- |
 | SoC | ESP32-P4 v1.3 at 360 MHz (400 MHz needs a v3 chip), 16 MB flash, 32 MB hex PSRAM at 200 MHz |
 | Display | 5" IPS 720×1280 portrait panel over MIPI-DSI, shown in landscape by LVGL (`rotation: 270`); reset through I/O expander `pi4ioe1` pin 4; PHY supply LDO3 2.5 V |
-| I/O expanders | two PI4IOE5V6408 on I²C (0x43, 0x44): panel reset, touch reset |
+| I/O expanders | two PI4IOE5V6408 on I²C (0x43, 0x44): panel reset, touch reset, **ESP32-C6 power** (0x44 pin 0), 5 V rails, charger |
 | I²C | GPIO31 (SDA) / GPIO32 (SCL), 400 kHz |
 | Backlight | LEDC on GPIO22, 1 kHz |
 | Touch | interrupt GPIO23, reset `pi4ioe1` pin 5; chip depends on the revision (below) |
@@ -74,8 +74,8 @@ ST7123 or an ST7121: try both).
 
 | Display chip | Units made | Build with | Status |
 | :--- | :--- | :--- | :--- |
-| **ST7123** (display and touch in one chip) | 14/10/2025 → 28/04/2026 | default | board settings in daily use in the Tab5 project |
-| **ST7121** (display and touch in one chip) | from 28/04/2026 | `-s board_tab5_panel M5STACK-TAB5-ST7121` | runs the Tab5 project on a user's unit (touch through the `st7123` driver) |
+| **ST7123** (display and touch in one chip) | 14/10/2025 → 28/04/2026 | default | compiled; board settings in daily use in the Tab5 project |
+| **ST7121** (display and touch in one chip) | from 28/04/2026 | `-s board_tab5_panel M5STACK-TAB5-ST7121` | ✅ Vigie runs on one (2026-10-28) |
 | **ILI9881C** + separate GT911 | 09/05/2025 → 14/10/2025 | `-s board_tab5_panel M5STACK-TAB5 -s board_tab5_touch gt911 -s board_tab5_touch_interval never` | compiles, never run |
 
 ### Known traps (already handled)
@@ -84,7 +84,14 @@ ST7123 or an ST7121: try both).
   expander, which needs about a second after start-up. The board package blocks for 1 s at
   `on_boot` priority 700, before the display starts. It must stay a blocking C `delay()`: an
   ESPHome `delay:` action does not hold the display's setup back.
+- **No Wi-Fi at all (`sdmmc_card_init failed`, `esp_wifi_init failed`)**: the ESP32-C6 is powered
+  through the second expander (0x44, pin 0). Its setup leaves the pin off, so the board package
+  holds a `wifi_power` switch, `ALWAYS_ON` (found on 2026-10-28: the first build without it had no
+  network on a Tab5 ST7121).
 - **Wi-Fi link after a restart**: same C6 link as the 7B, same CORE reset (`c6_link.cpp`).
+- **Wi-Fi kept from another ESPHome firmware**: with no network written in the YAML, ESPHome keeps
+  the credentials given by Improv or the access point under a fixed key, so a Tab5 that ran
+  another such firmware joins its network again without being asked.
 - **Screen off**: black veil only (`panel_power.cpp`, mode 0). On the ST7123 and ST7121 the touch
   lives in the panel chip: "sleep in" would probably stop the touch that wakes the screen.
 - **No mirroring**: display or touch mirroring corrupts the image on an ST7121; rotation is done

@@ -9,8 +9,8 @@ All notable changes to this project are documented here. Format:
 
 - M5Stack Tab5 (1280×720, `-s vigie_board tab5`): board package taken from the
   M5-Tab5-ESPHome-LVGL project (ST7123 by default; ST7121 and ILI9881C by substitution), the
-  screen layout scaled to 120 % with a 800×320 map (ADR 0003). Compiled and rendered; not run on
-  a Tab5 yet.
+  screen layout scaled to 120 % with a 800×320 map (ADR 0003). Runs on a Tab5 ST7121 (Wi-Fi,
+  frame from the public API over HTTPS); its ESP32-C6 is powered through the second I/O expander.
 - Board geometry apart from hardware (`firmware/packages/layout-<board>.yaml`); one world map
   image per map size.
 - The screen rendered off the device (`vigie-render.yaml`, ESPHome `host` platform): CI renders

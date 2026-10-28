@@ -8,14 +8,14 @@
   the active zone (touch to change zone), English and French.
 - C++ core tested on a PC and in CI.
 - **M5Stack Tab5** (1280×720): board package from the Tab5 project, layout scaled from the 7B one
-  (ADR 0003), compiled and rendered in CI.
+  (ADR 0003), compiled and rendered in CI, running on a Tab5 ST7121.
 - Screen rendered off the device for every board and language (`vigie-render.yaml`).
 - Installation guide and project page (GitHub Pages).
 
 ## Next
 
-1. **Try it on a Tab5** (flash, Wi-Fi, frame received, screen, touch, screen off and on, an
-   update over Wi-Fi), then on an ST7121 unit.
+1. **Finish the Tab5 tests**: on the ST7121 (2026-10-28) the flash, Wi-Fi and frames are
+   checked; screen off and on and an update over Wi-Fi are left; then an ST7123 unit.
 2. **Published firmware and a web installer**: signed builds attached to a release, installed from
    the project page over USB (ESP Web Tools), with the public API by default. Needs a decision on
    the signing key of published builds.

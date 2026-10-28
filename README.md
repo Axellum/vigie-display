@@ -35,7 +35,7 @@ left out, never invented.
 | Board | Screen | `vigie_board` | Status |
 | :--- | :--- | :--- | :--- |
 | Waveshare ESP32-P4-WIFI6-Touch-LCD-7B | 7", 1024×600 | `waveshare-7b` (default) | ✅ Tested on the board |
-| M5Stack Tab5 (ST7123, ST7121, ILI9881C) | 5", 1280×720 | `tab5` | 🧪 Compiled and rendered; board settings from the Tab5 project, Vigie not run on a Tab5 yet |
+| M5Stack Tab5 (ST7123, ST7121, ILI9881C) | 5", 1280×720 | `tab5` | ✅ Runs on a Tab5 ST7121; ST7123 and ILI9881C compiled |
 
 | Waveshare 7B, 1024×600 | M5Stack Tab5, 1280×720 |
 | :---: | :---: |

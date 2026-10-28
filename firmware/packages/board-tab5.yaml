@@ -140,6 +140,49 @@ pi4ioe5v6408:
   - id: pi4ioe2
     address: 0x44
 
+# Power rails and charger behind the expanders, set as the Tab5 project does
+# (Tab5/paquets/tab5-sensors-diagnostics.yaml). WiFi Power feeds the ESP32-C6: the expander's
+# setup leaves it off, and without this switch the SDIO link never comes up
+# ("sdmmc_card_init failed", seen on a Tab5 ST7121 on 2026-10-28). The charger stays off, as
+# the Tab5 project leaves it with no battery fitted.
+switch:
+  - platform: gpio
+    id: wifi_power
+    pin:
+      pi4ioe5v6408: pi4ioe2
+      number: 0
+    restore_mode: ALWAYS_ON
+  - platform: gpio
+    id: usb_5v_power
+    pin:
+      pi4ioe5v6408: pi4ioe2
+      number: 3
+    restore_mode: ALWAYS_ON
+  - platform: gpio
+    id: external_5v_power
+    pin:
+      pi4ioe5v6408: pi4ioe1
+      number: 2
+    restore_mode: ALWAYS_ON
+  - platform: gpio
+    id: wifi_antenna_int_ext
+    pin:
+      pi4ioe5v6408: pi4ioe1
+      number: 0
+  - platform: gpio
+    id: charge_enable
+    pin:
+      pi4ioe5v6408: pi4ioe2
+      number: 7
+    restore_mode: ALWAYS_OFF
+  - platform: gpio
+    id: quick_charge
+    pin:
+      pi4ioe5v6408: pi4ioe2
+      number: 5
+      inverted: true
+    restore_mode: ALWAYS_OFF
+
 # MIPI-DSI PHY supply: LDO_VO3 at 2.5 V.
 esp_ldo:
   - voltage: 2.5V
