@@ -1,0 +1,24 @@
+# Screen geometry of the M5Stack Tab5, without its hardware: used by its board package
+# (board-tab5.yaml) and by the off-device rendering (vigie-render.yaml).
+#
+# The 1024x600 layout of firmware/display/vigie_screen.cpp at 120 %, with a 800x320 map (2.5 : 1,
+# image firmware/images/world_map_800x320.png): the weather panel takes the rest of the width.
+# Font sizes in pixels, 120 % of the 7B ones.
+
+substitutions:
+  # Screen as LVGL sees it (landscape) and the panel as its driver sees it (portrait).
+  board_screen_width: "1280"
+  board_screen_height: "720"
+  board_panel_width: "720"
+  board_panel_height: "1280"
+  # Portrait panel turned by LVGL into landscape, as in the M5-Tab5-ESPHome-LVGL project.
+  board_rotation: "270"
+  board_layout_scale: "120"
+  board_map_width: "800"
+  board_map_height: "320"
+  board_font_small: "19"
+  board_font_body: "24"
+  board_font_title: "31"
+  board_font_temperature: "77"
+  board_font_icons: "29"
+  board_font_weather_icon: "86"

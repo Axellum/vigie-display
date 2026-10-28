@@ -1,0 +1,87 @@
+# Vigie screen rendered off the device: the same LVGL screen and C++ as the firmware, built for
+# ESPHome's `host` platform (Linux or macOS) and drawn into an in-memory display (`snapshot`),
+# fed with a frame read from a file instead of the network. It writes one BMP of the panel and
+# exits. Never flashed anywhere. Used by CI (.github/workflows/render.yml) for the screenshots
+# of the documentation and of the GitHub Pages site, for every board layout.
+#
+#   esphome -s vigie_board tab5 -s vigie_frame /abs/path/frame.txt compile vigie-render.yaml
+#   ESPHOME_SNAPSHOT_DIR=out .esphome/build/vigie-render/.pioenvs/vigie-render/program
+#   python tools/render_png.py out tab5
+#
+# The board's hardware is not used, only its layout (firmware/packages/layout-<board>.yaml).
+
+substitutions:
+  vigie_version: 0.0.0-render
+  vigie_board: waveshare-7b
+  vigie_language: en
+  vigie_api_max_bytes: "32768"
+  # Absolute path of the frame to show (the fixture by default: its hazards are days old).
+  vigie_frame: tests/fixtures/api_frame.txt
+  # Seconds of drawing before the snapshot.
+  vigie_render_delay: 3s
+
+esphome:
+  name: vigie-render
+  friendly_name: Vigie render
+  min_version: 2026.9.1
+  includes:
+    - firmware/core/vigie_model.h
+    - firmware/core/vigie_model.cpp
+    - firmware/core/vigie_text.h
+    - firmware/core/vigie_text.cpp
+    - firmware/core/vigie_api_client.h
+    - firmware/core/vigie_api_client.cpp
+  on_boot:
+    # After the screen is built (vigie-screen.yaml, priority -100).
+    - priority: -200
+      then:
+        - lambda: |-
+            static char body[${vigie_api_max_bytes}];
+            size_t size = 0;
+            FILE* f = std::fopen("${vigie_frame}", "rb");
+            if (f != nullptr) {
+              size = std::fread(body, 1, sizeof(body), f);
+              std::fclose(f);
+            }
+            VigieAlarmDecision alarm;
+            const uint32_t now = millis();
+            if (!vigie_receive_http_response(f != nullptr ? 200 : 404, body, size, sizeof(body), g_vigie_state,
+                                             g_vigie_link, now, alarm)) {
+              ESP_LOGE("vigie.render", "Frame refused: %s (%u bytes)", "${vigie_frame}", (unsigned) size);
+              std::exit(2);
+            }
+            ESP_LOGI("vigie.render", "Frame: %u zones, %u hazards", (unsigned) g_vigie_state.zone_count,
+                     (unsigned) g_vigie_state.hazard_count);
+            const uint32_t clock = id(sntp_time).now().is_valid() ? id(sntp_time).now().timestamp : 0;
+            vigie_screen_paint(g_vigie_state, g_vigie_link, now, vigie_current_utc(clock, g_vigie_state, g_vigie_link, now));
+        - delay: ${vigie_render_delay}
+        - snapshot.take:
+            id: panel
+            filename: vigie-${vigie_board}-${vigie_language}.bmp
+        - lambda: "std::exit(0);"
+
+host:
+
+logger:
+  level: INFO
+
+packages:
+  layout: !include firmware/packages/layout-${vigie_board}.yaml
+  screen: !include firmware/packages/vigie-screen.yaml
+
+display:
+  - platform: snapshot
+    id: panel
+    dimensions:
+      width: ${board_panel_width}
+      height: ${board_panel_height}
+    update_interval: never
+
+# No touch screen off the device.
+lvgl:
+  touchscreens: !remove
+
+time:
+  - platform: host
+    id: sntp_time
+    timezone: UTC

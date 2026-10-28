@@ -12,7 +12,8 @@ http_request:
   id: api_http
   useragent: vigie-display/${vigie_version}
   timeout: 8s
-  # The API runs on the local network over plain HTTP.
+  # The API runs on the local network over plain HTTP, or is the public one over HTTPS: the
+  # certificate is not checked (no CA bundle in the firmware); the frame carries its own CRC.
   verify_ssl: false
 
 interval:

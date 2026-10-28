@@ -7,6 +7,16 @@ All notable changes to this project are documented here. Format:
 
 ### Added
 
+- M5Stack Tab5 (1280×720, `-s vigie_board tab5`): board package taken from the
+  M5-Tab5-ESPHome-LVGL project (ST7123 by default; ST7121 and ILI9881C by substitution), the
+  screen layout scaled to 120 % with a 800×320 map (ADR 0003). Runs on a Tab5 ST7121 (Wi-Fi,
+  frame from the public API over HTTPS); its ESP32-C6 is powered through the second I/O expander.
+- Board geometry apart from hardware (`firmware/packages/layout-<board>.yaml`); one world map
+  image per map size.
+- The screen rendered off the device (`vigie-render.yaml`, ESPHome `host` platform): CI renders
+  every board and language from a live frame of the public API.
+- Installation guide (`docs/installation.md`), hardware page for both boards, ADR 0003, and a
+  project page on GitHub Pages (`site/`).
 - First real screen for the Waveshare ESP32-P4 7B (1024×600): status bar, world map with active
   hazards and watched zones, the five most severe alerts, weather of the active zone with a
   five-day forecast; touch the weather panel for the next zone.
@@ -23,6 +33,9 @@ All notable changes to this project are documented here. Format:
 
 ### Changed
 
+- The screen layout is computed from the board's sizes; the Waveshare 7B keeps its layout pixel
+  for pixel. `firmware/images/world_map.png` is now `world_map_664x266.png`.
+- CI compiles the firmware for every board.
 - Whole repository in English; code organised as `firmware/core` (plain C++), `firmware/display`
   (LVGL and board helpers) and `firmware/packages` (ESPHome).
 

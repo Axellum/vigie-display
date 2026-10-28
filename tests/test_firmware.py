@@ -5,7 +5,8 @@
   flat (ESPHome copies `includes:` files flat into its build).
 - Every file listed in an `includes:` exists; every C++ file of firmware/ is listed.
 - Every MDI icon drawn by the C++ is in a font's `glyphs:` and every listed glyph is drawn.
-- The world map image matches its generator and the projection constants.
+- Every board package gives the layout sizes; each world map image matches its generator,
+  the projection constants and a board's map size.
 - The C++ tests of tools/ compile and pass (g++, clang++, or zig through `python -m ziglang`).
 """
 
@@ -26,7 +27,7 @@ REPO = Path(__file__).resolve().parent.parent
 FIRMWARE = REPO / "firmware"
 CORE = FIRMWARE / "core"
 FIXTURE = REPO / "tests" / "fixtures" / "api_frame.txt"
-YAML_FILES = [REPO / "vigie.yaml", *sorted((FIRMWARE / "packages").glob("*.yaml"))]
+YAML_FILES = [REPO / "vigie.yaml", REPO / "vigie-render.yaml", *sorted((FIRMWARE / "packages").glob("*.yaml"))]
 CPP_FILES = sorted(FIRMWARE.rglob("*.cpp")) + sorted(FIRMWARE.rglob("*.h"))
 
 
@@ -121,6 +122,39 @@ def test_mdi_glyphs_listed_and_used():
     # Every weather icon exists at both sizes (big current icon, small forecast icon).
     weather = set(re.findall(r'"\\U000(F[0-9A-F]{4})"', (CORE / "vigie_text.cpp").read_text(encoding="utf-8").split("vigie_hazard_name")[0]))
     assert {int(c, 16) for c in weather} <= fonts["font_weather_icon"] & fonts["font_icons"]
+
+
+LAYOUT_KEYS = {
+    "board_screen_width", "board_screen_height", "board_panel_width", "board_panel_height", "board_rotation",
+    "board_layout_scale", "board_map_width", "board_map_height", "board_font_small", "board_font_body",
+    "board_font_title", "board_font_temperature", "board_font_icons", "board_font_weather_icon",
+}
+BOARD_KEYS = {"board_panel_off_mode", "board_panel_dark_during_ota"}
+
+
+def test_board_packages_define_the_layout():
+    """Every board has a layout (sizes the screen package and the C++ need) and includes it."""
+    packages = FIRMWARE / "packages"
+    boards = sorted(p.stem.removeprefix("board-") for p in packages.glob("board-*.yaml"))
+    layouts = sorted(p.stem.removeprefix("layout-") for p in packages.glob("layout-*.yaml"))
+    assert boards == layouts, "one layout-<board>.yaml per board-<board>.yaml"
+    assert set(boards) >= {"waveshare-7b", "tab5"}
+    for board in boards:
+        package = load(packages / f"board-{board}.yaml")
+        assert package["packages"]["layout"] == f"layout-{board}.yaml", f"board-{board}.yaml must include its layout"
+        assert not BOARD_KEYS - set(package.get("substitutions") or {}), f"board-{board}.yaml"
+        subs = load(packages / f"layout-{board}.yaml")["substitutions"]
+        assert set(subs) == LAYOUT_KEYS, f"layout-{board}.yaml: {sorted(set(subs) ^ LAYOUT_KEYS)}"
+        assert not set(subs) & set(package.get("substitutions") or {}), f"board-{board}.yaml repeats its layout"
+        width, height = int(subs["board_map_width"]), int(subs["board_map_height"])
+        assert abs(width / height - 2.5) < 0.01, f"layout-{board}.yaml: the map must be 2.5 : 1 (360° × 144°)"
+        assert (FIRMWARE / "images" / f"world_map_{width}x{height}.png").is_file(), board
+    # The 7B is the reference layout: scale 100, and the C++ defaults are its values.
+    reference = load(packages / "layout-waveshare-7b.yaml")["substitutions"]
+    assert reference["board_layout_scale"] == "100"
+    header = (CORE / "vigie_text.h").read_text(encoding="utf-8")
+    assert f"#define VIGIE_MAP_WIDTH {reference['board_map_width']}" in header
+    assert f"#define VIGIE_MAP_HEIGHT {reference['board_map_height']}" in header
 
 
 def test_world_map_up_to_date():
