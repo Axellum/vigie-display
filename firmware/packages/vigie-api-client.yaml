@@ -27,7 +27,9 @@ interval:
             - http_request.get:
                 url: !lambda |-
                   char url[256];
-                  if (!vigie_build_frame_url("${vigie_api_url}", "${vigie_board}", g_vigie_state.gps, url, sizeof(url))) {
+                  // The spot of the sea page, unless the API has already said it does not know it.
+                  if (!vigie_build_frame_url("${vigie_api_url}", "${vigie_board}", g_vigie_state.gps, url, sizeof(url),
+                                             vigie_spot_to_ask(g_vigie_link, "${vigie_spot}"))) {
                     return std::string();
                   }
                   return std::string(url);
@@ -38,11 +40,13 @@ interval:
                     - lambda: |-
                         VigieAlarmDecision alarm;
                         const uint32_t now = millis();
+                        const bool spot_asked = vigie_spot_to_ask(g_vigie_link, "${vigie_spot}") != nullptr;
                         if (vigie_receive_http_response(response->status_code, body.c_str(), body.size(),
-                                                        ${vigie_api_max_bytes}, g_vigie_state, g_vigie_link, now, alarm)) {
-                          ESP_LOGI("vigie.api", "Frame received: %u zones, %u hazards (%u bytes)",
+                                                        ${vigie_api_max_bytes}, g_vigie_state, g_vigie_link, now, alarm,
+                                                        &g_vigie_sea)) {
+                          ESP_LOGI("vigie.api", "Frame received: %u zones, %u hazards (%u bytes), sea %s",
                                    (unsigned) g_vigie_state.zone_count, (unsigned) g_vigie_state.hazard_count,
-                                   (unsigned) body.size());
+                                   (unsigned) body.size(), g_vigie_sea.valid ? "yes" : "no");
                           if (alarm.trigger) {
                             ESP_LOGI("vigie.api", "Critical hazard not acknowledged: %s (%.0f km)", alarm.hazard_id,
                                      alarm.distance_km);
@@ -50,6 +54,11 @@ interval:
                         } else {
                           ESP_LOGW("vigie.api", "Frame refused: HTTP %d, %u bytes", response->status_code,
                                    (unsigned) body.size());
+                        }
+                        vigie_note_spot_status(g_vigie_link, response->status_code, spot_asked);
+                        if (spot_asked && g_vigie_link.spot_refused) {
+                          ESP_LOGW("vigie.api", "The API does not know the spot \"%s\": asking without it from now on",
+                                   "${vigie_spot}");
                         }
                         const uint32_t clock = id(sntp_time).now().is_valid() ? id(sntp_time).now().timestamp : 0;
                         vigie_screen_paint(g_vigie_state, g_vigie_link, now,

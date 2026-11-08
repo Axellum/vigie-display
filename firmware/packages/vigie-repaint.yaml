@@ -1,0 +1,11 @@
+# Repaints the screen every second: the status line ("12 s ago"), the clock and the age of the sea.
+# Kept apart from vigie-screen.yaml because the CI render (vigie-render.yaml) includes that one and
+# paints with a clock of its own choosing: a repaint with the machine's clock would undo it.
+
+interval:
+  - interval: 1s
+    then:
+      - lambda: |-
+          const uint32_t now = millis();
+          const uint32_t clock = id(sntp_time).now().is_valid() ? id(sntp_time).now().timestamp : 0;
+          vigie_screen_paint(g_vigie_state, g_vigie_link, now, vigie_current_utc(clock, g_vigie_state, g_vigie_link, now));
