@@ -53,8 +53,13 @@ is saved in NVS, the sea is not). The rules it keeps:
 - `vigie_build_frame_url()` takes an optional spot id and adds `&spot=<id>`; an empty or invalid
   id (`vigie_spot_id_valid()`: a-z, 0-9, `-`, `_`) is left out, so a typo cannot stop the weather.
 
-**The firmware does not ask for a spot yet and no screen shows the sea**: the URL builder and the
-decoder are ready and tested; wiring them to a setting and to the screen is the next step.
+The firmware asks for the spot of the `vigie_spot` substitution (empty by default: no sea page) and
+the screen shows the sea on its second page ([ADR 0004](decisions/0004-sea-page.md)). A spot the API
+answers 404 or 422 to is not asked for again until the next boot (`vigie_note_spot_status()`), so
+the weather keeps coming. `vigie_sea_hour_index()`, `vigie_tide_height_at()` and
+`vigie_sea_coefficient_for()` give the screen the hour bar of now, the height of the water at a
+time (a half cosine between the extremes, nothing outside them) and the coefficient of the next
+high water.
 
 ## Fixtures
 
@@ -66,5 +71,9 @@ decoder are ready and tested; wiring them to a setting and to the screen is the 
   signing the frame again gives the same decoded world, and that altering a byte of the block is
   still refused by the CRC. `tools/test_vigie_model.cpp` checks the same with small frames and an
   unknown tag.
+- `tests/fixtures/api_frame_activities_warning.txt` is the previous frame with an orange coastal
+  warning on its `SEA` line, signed again, so that CI renders the banner. Its activities are those
+  of the plain frame, not what the API would answer under a warning: it tests the display, not the
+  rules. `tests/test_firmware.py` checks that nothing else differs.
 
-Refresh both when the contract changes (`docs/development.md`).
+Refresh the first two when the contract changes (`docs/development.md`).

@@ -10,6 +10,9 @@
 - **M5Stack Tab5** (1280×720): board package from the Tab5 project, layout scaled from the 7B one
   (ADR 0003), compiled and rendered in CI, running on a Tab5 ST7121.
 - Screen rendered off the device for every board and language (`vigie-render.yaml`).
+- Sea page (surf, kite, boat, shore fishing, tide, sun, coastal warning) with the detail of each
+  activity, on the surf spot of `vigie_spot` (ADR 0004); compiled and rendered in CI, **not yet tried
+  on a board**.
 - Installation guide and project page (GitHub Pages).
 
 ## Next
