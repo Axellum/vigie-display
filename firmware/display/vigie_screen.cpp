@@ -89,9 +89,10 @@ constexpr int kSeaStripX = (kSeaCardW - kSeaStripW) / 2;
 constexpr int kSeaStripY = sc(168);
 constexpr int kSeaStripH = sc(30);
 constexpr int kSeaRows = 3;       // criteria shown on a card
-constexpr int kSeaRowsY = sc(228);
+constexpr int kSeaRowsY = sc(226);  // 228 would overflow by a pixel at 120 % (each length is rounded)
 constexpr int kSeaRowH = sc(24);
-constexpr int kSeaValueW = sc(64);
+constexpr int kSeaValueW = sc(84);                      // "Force 6" in bold needs 70 px at 100 %
+constexpr int kSeaLabelW = kSeaCardInner - sc(60);      // overlaps the value's box, not its right-aligned text
 constexpr int kSeaLegendY = kSeaCardsY + kSeaCardH + sc(8);
 constexpr int kSeaBottomY = kSeaLegendY + sc(26);
 constexpr int kSeaBottomH = kScreenH - kMargin - kSeaBottomY;  // 7B: 150
@@ -603,8 +604,18 @@ bool judged(const VigieActivityForecast& a, bool show) {
 
 void paint_banner(VigieSeaBanner kind, const VigieSea& sea, const char* text) {
     Screen& s = g_screen;
-    set_hidden(s.banner, kind == VigieSeaBanner::NONE);
-    if (kind == VigieSeaBanner::NONE) return;
+    // Nothing to warn about: a quiet line, the nearest town, so that the top of the page is not an empty band.
+    const bool quiet = kind == VigieSeaBanner::NONE;
+    set_hidden(s.banner, quiet && sea.place[0] == '\0');
+    set_hidden(s.banner_icon, quiet);
+    set_pos(s.banner_text, quiet ? sc(2) : sc(46), sc(7));
+    if (quiet) {
+        set_bg_opa(s.banner, LV_OPA_TRANSP);
+        set_border_colour(s.banner, kBackground);
+        set_text_colour(s.banner_text, kTextDim);
+        set_text(s.banner_text, sea.place);
+        return;
+    }
     uint32_t accent = kTextDim;
     uint32_t border = kLine;
     uint32_t text_colour = kText;
@@ -649,7 +660,9 @@ void paint_card(int i, const VigieSea& sea, bool show, bool dim, int32_t offset,
 
     // Why it is not good, or that it cannot be judged here.
     const char* reason = "";
-    if (show && a.present && !a.available) {
+    if (!show) {
+        reason = vigie_tr(VigieText::SEA_EXPIRED);  // no verdict: say why on the card itself
+    } else if (a.present && !a.available) {
         reason = vigie_tr(VigieText::SEA_NOT_AVAILABLE);
     } else if (shown && vigie_format_reason(a, buf, sizeof(buf))) {
         reason = buf;
@@ -1177,7 +1190,7 @@ void vigie_screen_build(const VigieScreenFonts& f, esphome::image::Image* world_
         c.axis[2] = label(c.box, f.small, kTextDim, kSeaStripX + kSeaStripW - axis_w, axis_y, axis_w, LV_TEXT_ALIGN_RIGHT);
         for (int r = 0; r < kSeaRows; ++r) {
             const int y = kSeaRowsY + r * kSeaRowH;
-            c.row_label[r] = label(c.box, f.small, kTextDim, kSeaCardPad, y + sc(2), inner - kSeaValueW);
+            c.row_label[r] = label(c.box, f.small, kTextDim, kSeaCardPad, y + sc(2), kSeaLabelW);
             c.row_value[r] = label(c.box, f.body_bold, kText, kSeaCardPad + inner - kSeaValueW, y, kSeaValueW, LV_TEXT_ALIGN_RIGHT);
         }
     }
@@ -1195,8 +1208,11 @@ void vigie_screen_build(const VigieScreenFonts& f, esphome::image::Image* world_
     // Tide: title, the next two extremes, the estimated coefficient, the curve of the 24 hours.
     s.tide_panel = box(s.sea_page, kMargin, kSeaBottomY, kSeaTideW, kSeaBottomH, kPanel, sc(10));
     s.tide_title = label(s.tide_panel, f.body_bold, kText, kSeaCardPad, sc(10), sc(84));
-    s.tide_next[0] = label(s.tide_panel, f.small, kTextDim, sc(100), sc(13), sc(150));
-    s.tide_next[1] = label(s.tide_panel, f.small, kTextDim, sc(256), sc(13), sc(150));
+    // The next two extremes, in a row under the curve.
+    const int next_w = (kSeaTideW - 2 * kSeaCardPad) / 2;
+    for (int j = 0; j < 2; ++j) {
+        s.tide_next[j] = label(s.tide_panel, f.small, kTextDim, kSeaCardPad + j * next_w, kSeaBottomH - sc(30), next_w);
+    }
     const int badge_w = sc(170);
     s.tide_badge = box(s.tide_panel, kSeaTideW - kSeaCardPad - badge_w, sc(8), badge_w, sc(26), kAccent, LV_RADIUS_CIRCLE);
     s.tide_badge_text = label(s.tide_badge, f.small, kBackground, 0, sc(2), badge_w, LV_TEXT_ALIGN_CENTER);
