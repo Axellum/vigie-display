@@ -18,7 +18,8 @@ P4 decodes without allocating memory. Contract: [api-frame.md](api-frame.md).
 | Layer | Files | Depends on | Tested by |
 | :--- | :--- | :--- | :--- |
 | Core | `firmware/core/vigie_model.*` — world state, geometry, NMEA, frame decoder, CRC32, NVS block, alarm decision | C++17 only | `tools/test_vigie_model.cpp` |
-| | `firmware/core/vigie_text.*` — every on-screen text (English, French), numbers, dates, map projection, icons | core | `tools/test_vigie_text.cpp` |
+| | `firmware/core/vigie_sea.*` — the sea of a surf spot from the frame's `SEA` / `ACT` / `CRIT` lines: verdicts per activity and hour, criteria, tide, sun, coastal warning, freshness | core | `tools/test_vigie_sea.cpp` (real frame fixture) |
+| | `firmware/core/vigie_text.*` — every on-screen text (English, French), numbers, dates, map projection, icons, the sea's sentences | core | `tools/test_vigie_text.cpp` |
 | | `firmware/core/vigie_api_client.*` — URL, HTTP response checks, link state | core | `tools/test_vigie_api_client.cpp` (real frame fixture) |
 | Display | `firmware/display/vigie_screen.*` — the LVGL screen, built once in C++, repainted with compare-first writes; layout drawn for 1024×600 and scaled per board | core, LVGL, ESPHome fonts/images | compiled by ESPHome; rendered off the device (`vigie-render.yaml`) |
 | | `firmware/display/panel_power.*`, `c6_link.*`, `board_7b_version.h` — board helpers | ESP-IDF, ESPHome | compiled; tested on the boards in the Tab5 project |

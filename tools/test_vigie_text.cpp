@@ -1,8 +1,11 @@
 // PC tests of firmware/core/vigie_text.cpp: map projection, labels, numbers, times, in
 // English and French. Built and run by tests/test_firmware.py and the CI.
 #include <cmath>
+#include <cstdio>
+#include <cstring>
 
 #include "test_check.h"
+#include "test_vocabulary.h"
 #include "vigie_text.h"
 
 namespace {
@@ -198,6 +201,194 @@ void test_weather_texts() {
     vigie_set_language(VigieLanguage::EN);
 }
 
+// ─── Sea texts (activities of a surf spot) ──────────────────────────────────
+
+void test_sea_names_and_vocabulary() {
+    vigie_set_language(VigieLanguage::EN);
+    CHECK_STR(vigie_activity_name(VigieActivity::SURF), "Surf");
+    CHECK_STR(vigie_activity_name(VigieActivity::KITE), "Kite / wing");
+    CHECK_STR(vigie_activity_name(VigieActivity::SHORE_FISHING), "Shore fishing");
+    CHECK_STR(vigie_activity_name(VigieActivity::COUNT_), "");
+    CHECK_STR(vigie_verdict_label(VigieVerdict::GOOD), "Good");
+    CHECK_STR(vigie_verdict_label(VigieVerdict::POOR), "Not advised");
+    CHECK_STR(vigie_verdict_label(VigieVerdict::UNKNOWN), "");
+    CHECK_STR(vigie_criterion_label(VigieCriterionId::SWELL_HEIGHT), "Swell");
+    CHECK_STR(vigie_criterion_label(VigieCriterionId::COEFFICIENT), "Coefficient (est.)");
+    CHECK_STR(vigie_criterion_label(VigieCriterionId::UNKNOWN), "");
+    CHECK_STR(vigie_criterion_state_text(VigieCriterionId::SWELL_HEIGHT, VigieCriterionState::TOO_SMALL), "too small");
+    CHECK_STR(vigie_criterion_state_text(VigieCriterionId::WIND_DIRECTION, VigieCriterionState::ONSHORE), "onshore");
+    // A pair that is not in the contract has no text: nothing is shown, nothing is guessed.
+    CHECK_STR(vigie_criterion_state_text(VigieCriterionId::TIDE, VigieCriterionState::TOO_SMALL), "");
+    CHECK_STR(vigie_criterion_state_text(VigieCriterionId::UNKNOWN, VigieCriterionState::UNKNOWN), "");
+    CHECK_STR(vigie_tr(VigieText::SEA_RULES_NOTICE), "Vigie's own rules, not for safety");
+
+    vigie_set_language(VigieLanguage::FR);
+    CHECK_STR(vigie_activity_name(VigieActivity::BOAT), "Bateau");
+    CHECK_STR(vigie_activity_name(VigieActivity::SHORE_FISHING), "P\xC3\xAA" "che \xC3\xA0 pied");
+    CHECK_STR(vigie_verdict_label(VigieVerdict::GOOD), "Bon");
+    CHECK_STR(vigie_verdict_label(VigieVerdict::POOR), "D\xC3\xA9" "conseill\xC3\xA9");
+    CHECK_STR(vigie_criterion_state_text(VigieCriterionId::SWELL_HEIGHT, VigieCriterionState::TOO_SMALL), "trop petite");
+    CHECK_STR(vigie_criterion_state_text(VigieCriterionId::WIND, VigieCriterionState::OFFSHORE), "de terre");
+
+    // Every pair of the contract's table has a text in both languages, and every criterion a label.
+    for (const VocabularyRow& row : kContractVocabulary) {
+        const VigieCriterionId criterion = vigie_criterion_from_name(row.criterion);
+        for (int i = 0; i < 6 && row.states[i] != nullptr; ++i) {
+            const VigieCriterionState state = vigie_criterion_state_from_name(row.states[i]);
+            vigie_set_language(VigieLanguage::EN);
+            const bool en = vigie_criterion_state_text(criterion, state)[0] != '\0';
+            vigie_set_language(VigieLanguage::FR);
+            const bool fr_text = vigie_criterion_state_text(criterion, state)[0] != '\0';
+            if (!en || !fr_text) {
+                std::printf("FAIL no text for %s.%s\n", row.criterion, row.states[i]);
+                ++test_failures();
+            }
+        }
+        CHECK(vigie_criterion_label(criterion)[0] != '\0');
+    }
+    vigie_set_language(VigieLanguage::EN);
+}
+
+void test_sea_values_and_lines() {
+    char buf[64];
+    VigieCriterion c{};
+    c.value = 2.6f;
+    c.unit = VigieUnit::METRES;
+
+    vigie_set_language(VigieLanguage::EN);
+    CHECK(vigie_format_criterion_value(c, buf, sizeof(buf)));
+    CHECK_STR(buf, "2.6 m");
+    c.value = 10.0f;
+    c.unit = VigieUnit::SECONDS;
+    CHECK(vigie_format_criterion_value(c, buf, sizeof(buf)) && std::strcmp(buf, "10 s") == 0);
+    c.value = 21.0f;
+    c.unit = VigieUnit::DEGREES;
+    CHECK(vigie_format_criterion_value(c, buf, sizeof(buf)) && std::strcmp(buf, "21\xC2\xB0") == 0);
+    c.value = 18.7f;
+    c.unit = VigieUnit::KMH;
+    CHECK(vigie_format_criterion_value(c, buf, sizeof(buf)) && std::strcmp(buf, "19 km/h") == 0);
+    c.value = 11.9f;
+    c.unit = VigieUnit::KNOTS;
+    CHECK(vigie_format_criterion_value(c, buf, sizeof(buf)) && std::strcmp(buf, "11.9 kn") == 0);
+    c.value = 3.0f;
+    c.unit = VigieUnit::BEAUFORT;
+    CHECK(vigie_format_criterion_value(c, buf, sizeof(buf)) && std::strcmp(buf, "Force 3") == 0);
+    c.value = 102.0f;
+    c.unit = VigieUnit::MINUTES;
+    CHECK(vigie_format_criterion_value(c, buf, sizeof(buf)) && std::strcmp(buf, "102 min") == 0);
+    c.value = 91.0f;
+    c.unit = VigieUnit::NONE;
+    CHECK(vigie_format_criterion_value(c, buf, sizeof(buf)) && std::strcmp(buf, "91") == 0);
+    // Unknown value or unit: nothing is shown.
+    c.value = kVigieUnknown;
+    CHECK(!vigie_format_criterion_value(c, buf, sizeof(buf)) && buf[0] == '\0');
+    c.value = 5.0f;
+    c.unit = VigieUnit::UNKNOWN;
+    CHECK(!vigie_format_criterion_value(c, buf, sizeof(buf)) && buf[0] == '\0');
+    c.unit = VigieUnit::METRES;
+    c.value = 2.6f;
+    char tiny[3];
+    CHECK(!vigie_format_criterion_value(c, tiny, sizeof(tiny)));  // too small a buffer
+    vigie_set_language(VigieLanguage::FR);
+    CHECK(vigie_format_criterion_value(c, buf, sizeof(buf)) && std::strcmp(buf, "2,6 m") == 0);
+    c.unit = VigieUnit::KNOTS;
+    c.value = 11.9f;
+    CHECK(vigie_format_criterion_value(c, buf, sizeof(buf)) && std::strcmp(buf, "11,9 kn") == 0);
+
+    // Reason.
+    VigieActivityForecast a{};
+    a.reason_criterion = VigieCriterionId::SWELL_HEIGHT;
+    a.reason_state = VigieCriterionState::TOO_SMALL;
+    vigie_set_language(VigieLanguage::EN);
+    CHECK(vigie_format_reason(a, buf, sizeof(buf)) && std::strcmp(buf, "Swell: too small") == 0);
+    vigie_set_language(VigieLanguage::FR);
+    CHECK(vigie_format_reason(a, buf, sizeof(buf)) && std::strcmp(buf, "Houle : trop petite") == 0);
+    a.reason_criterion = VigieCriterionId::VIGILANCE;
+    a.reason_state = VigieCriterionState::RED;
+    vigie_set_language(VigieLanguage::EN);
+    CHECK(vigie_format_reason(a, buf, sizeof(buf)) && std::strcmp(buf, "Coastal warning: red") == 0);
+    a.reason_criterion = VigieCriterionId::UNKNOWN;
+    CHECK(!vigie_format_reason(a, buf, sizeof(buf)) && buf[0] == '\0');
+    a.reason_criterion = VigieCriterionId::TIDE;  // a pair the contract does not list
+    a.reason_state = VigieCriterionState::TOO_SMALL;
+    CHECK(!vigie_format_reason(a, buf, sizeof(buf)));
+
+    // Slot, local time.
+    CHECK(vigie_format_slot(1794132000u, 1794139200u, 3600, buf, sizeof(buf)) && std::strcmp(buf, "11:00\xE2\x80\x93" "13:00") == 0);
+    CHECK(vigie_format_slot(1794132000u, 1794139200u, 0, buf, sizeof(buf)) && std::strcmp(buf, "10:00\xE2\x80\x93" "12:00") == 0);
+    CHECK(!vigie_format_slot(0, 1794139200u, 0, buf, sizeof(buf)) && buf[0] == '\0');
+    CHECK(!vigie_format_slot(1794139200u, 1794132000u, 0, buf, sizeof(buf)));
+
+    // Tide.
+    VigieTideExtreme high{};
+    high.high = true;
+    high.utc = 1794149460u;
+    high.height_m = 1.71f;
+    CHECK(vigie_format_tide_extreme(high, 3600, buf, sizeof(buf)) && std::strcmp(buf, "High water 15:51 \xC2\xB7 1.7 m") == 0);
+    VigieTideExtreme low = high;
+    low.high = false;
+    low.height_m = kVigieUnknown;
+    CHECK(vigie_format_tide_extreme(low, 3600, buf, sizeof(buf)) && std::strcmp(buf, "Low water 15:51") == 0);
+    vigie_set_language(VigieLanguage::FR);
+    CHECK(vigie_format_tide_extreme(high, 3600, buf, sizeof(buf)) && std::strcmp(buf, "Pleine mer 15:51 \xC2\xB7 1,7 m") == 0);
+    high.utc = 0;
+    CHECK(!vigie_format_tide_extreme(high, 0, buf, sizeof(buf)) && buf[0] == '\0');
+    VigieTideCoefficient k{};
+    k.value = 84;
+    CHECK(vigie_format_tide_coefficient(k, buf, sizeof(buf)) && std::strcmp(buf, "Coefficient 84 (estim\xC3\xA9)") == 0);
+    vigie_set_language(VigieLanguage::EN);
+    CHECK(vigie_format_tide_coefficient(k, buf, sizeof(buf)) && std::strcmp(buf, "Coefficient 84 (estimated)") == 0);
+    k.value = 0;
+    CHECK(!vigie_format_tide_coefficient(k, buf, sizeof(buf)) && buf[0] == '\0');
+}
+
+void test_sea_warning_and_status() {
+    char buf[96];
+    VigieSea sea{};
+    vigie_set_language(VigieLanguage::EN);
+    CHECK(!vigie_format_warning(sea, 0, buf, sizeof(buf)));  // no sea data at all
+    sea.valid = true;
+    // The warnings could not be read: the screen says so, it does not say "nothing to fear".
+    sea.warnings_known = false;
+    CHECK(vigie_format_warning(sea, 0, buf, sizeof(buf)) && std::strcmp(buf, "Coastal warnings unavailable") == 0);
+    sea.warnings_known = true;
+    CHECK(!vigie_format_warning(sea, 0, buf, sizeof(buf)) && buf[0] == '\0');  // none stands
+    sea.warning_present = true;
+    sea.warning_level = VigieSeverity::GREEN;
+    CHECK(!vigie_format_warning(sea, 0, buf, sizeof(buf)));
+    sea.warning_level = VigieSeverity::ORANGE;
+    sea.warning_until_utc = 1794139200u;
+    CHECK(vigie_format_warning(sea, 3600, buf, sizeof(buf)) && std::strcmp(buf, "Orange coastal warning \xC2\xB7 until 13:00") == 0);
+    sea.warning_level = VigieSeverity::RED;
+    sea.warning_until_utc = 0;
+    CHECK(vigie_format_warning(sea, 0, buf, sizeof(buf)) && std::strcmp(buf, "Red coastal warning") == 0);
+    vigie_set_language(VigieLanguage::FR);
+    CHECK(vigie_format_warning(sea, 0, buf, sizeof(buf)) && std::strcmp(buf, "Vigilance c\xC3\xB4" "ti\xC3\xA8" "re rouge") == 0);
+    sea.warning_level = VigieSeverity::YELLOW;
+    sea.warning_until_utc = 1794139200u;
+    CHECK(vigie_format_warning(sea, 0, buf, sizeof(buf)) &&
+          std::strcmp(buf, "Vigilance c\xC3\xB4" "ti\xC3\xA8" "re jaune \xC2\xB7 jusqu'\xC3\xA0 12:00") == 0);
+
+    // Age of the data.
+    vigie_set_language(VigieLanguage::EN);
+    sea.generated_utc = 1794133609u;
+    CHECK(vigie_format_sea_status(sea, VigieSeaFreshness::NONE, 1794133609u, buf, sizeof(buf)) &&
+          std::strcmp(buf, "Sea data unavailable") == 0);
+    CHECK(vigie_format_sea_status(sea, VigieSeaFreshness::EXPIRED, 1794133609u + 99999u, buf, sizeof(buf)) &&
+          std::strcmp(buf, "Sea data too old") == 0);
+    CHECK(vigie_format_sea_status(sea, VigieSeaFreshness::STALE, 1794133609u + 720u, buf, sizeof(buf)) &&
+          std::strcmp(buf, "Sea data \xC2\xB7 12 min ago") == 0);
+    vigie_set_language(VigieLanguage::FR);
+    CHECK(vigie_format_sea_status(sea, VigieSeaFreshness::STALE, 1794133609u + 720u, buf, sizeof(buf)) &&
+          std::strcmp(buf, "Mer \xC2\xB7 il y a 12 min") == 0);
+    sea.stale = true;  // the API served the last answer of a provider: say so, whatever the age
+    vigie_set_language(VigieLanguage::EN);
+    CHECK(vigie_format_sea_status(sea, VigieSeaFreshness::STALE, 1794133609u + 5u, buf, sizeof(buf)) &&
+          std::strcmp(buf, "Some sea data is from an earlier reading") == 0);
+    CHECK(!vigie_format_sea_status(sea, VigieSeaFreshness::FRESH, 1794133609u, buf, sizeof(buf)) && buf[0] == '\0');
+    vigie_set_language(VigieLanguage::EN);
+}
+
 }  // namespace
 
 int main() {
@@ -205,5 +396,8 @@ int main() {
     test_english();
     test_french();
     test_weather_texts();
+    test_sea_names_and_vocabulary();
+    test_sea_values_and_lines();
+    test_sea_warning_and_status();
     return test_report("vigie_text");
 }
