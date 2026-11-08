@@ -254,11 +254,71 @@ void test_activities_lines_are_skipped(size_t size) {
     }
 }
 
+// The sea goes through the client: replaced by a good frame that carries the block, kept by one that does not.
+void test_sea_through_the_client(size_t size) {
+    VigieWorldState world{};
+    VigieLinkStatus link{};
+    VigieAlarmDecision alarm{};
+    VigieSea sea{};
+    CHECK(vigie_receive_http_response(200, g_frame, size, sizeof(g_frame), world, link, 1000, alarm, &sea));
+    CHECK(sea.valid && sea.generated_utc > 1700000000u);
+    CHECK(sea.activities[static_cast<int>(VigieActivity::SURF)].present);
+    const uint32_t generated = sea.generated_utc;
+
+    // A good frame without the block (no spot asked, or the swell could not be read): the sea is kept.
+    static char stripped[kFrameMax];
+    const size_t stripped_size = strip_activities(g_frame, stripped, sizeof(stripped));
+    CHECK(stripped_size > 0);
+    VigieWorldState other_world{};
+    CHECK(vigie_receive_http_response(200, stripped, stripped_size, sizeof(stripped), other_world, link, 2000, alarm, &sea));
+    CHECK(sea.valid && sea.generated_utc == generated);
+
+    // A refused response leaves it too, and the world with it.
+    CHECK(!vigie_receive_http_response(503, g_frame, size, sizeof(g_frame), other_world, link, 3000, alarm, &sea));
+    CHECK(sea.valid && sea.generated_utc == generated);
+
+    // Without a sea to fill (as the tests above call it), nothing changes in the world's decoding.
+    VigieWorldState plain{};
+    VigieLinkStatus plain_link{};
+    CHECK(vigie_receive_http_response(200, g_frame, size, sizeof(g_frame), plain, plain_link, 1000, alarm));
+    CHECK(same_world(world, plain));
+}
+
+// A spot the API does not know must not stop the world: the display asks without it afterwards.
+void test_spot_refused() {
+    VigieLinkStatus link{};
+    CHECK_STR(vigie_spot_to_ask(link, "soorts-hossegor-plage-sud-point-d-or"), "soorts-hossegor-plage-sud-point-d-or");
+    CHECK(vigie_spot_to_ask(link, "") == nullptr);  // not configured: no sea page, the world as before
+    CHECK(vigie_spot_to_ask(link, nullptr) == nullptr);
+    CHECK(vigie_spot_to_ask(link, "Not A Slug&x=1") == nullptr);
+
+    vigie_note_spot_status(link, 200, true);
+    CHECK(!link.spot_refused);
+    vigie_note_spot_status(link, 503, true);  // a network or server problem is not the spot's fault
+    CHECK(!link.spot_refused);
+    vigie_note_spot_status(link, 404, false);  // a 404 without a spot asked: the URL is wrong, not the spot
+    vigie_note_spot_status(link, 422, false);
+    CHECK(!link.spot_refused);
+    vigie_note_spot_status(link, 404, true);
+    CHECK(link.spot_refused);
+    CHECK(vigie_spot_to_ask(link, "soorts-hossegor-plage-sud-point-d-or") == nullptr);
+    CHECK(link.failure_count == 0);  // the note does not count a failure: vigie_receive_http_response() does
+
+    VigieLinkStatus unprocessable{};
+    vigie_note_spot_status(unprocessable, 422, true);
+    CHECK(unprocessable.spot_refused);
+
+    // The refusal is for this boot only: a fresh link asks again.
+    VigieLinkStatus rebooted{};
+    CHECK(vigie_spot_to_ask(rebooted, "a-spot") != nullptr);
+}
+
 }  // namespace
 
 int main(int argc, char** argv) {
     test_url();
     test_status_sentences();
+    test_spot_refused();
     const char* path = argc > 1 ? argv[1] : "tests/fixtures/api_frame.txt";
     const size_t size = read_file(path, g_frame, sizeof(g_frame));
     CHECK(size > 0);
@@ -266,6 +326,7 @@ int main(int argc, char** argv) {
     const char* activities_path = argc > 2 ? argv[2] : "tests/fixtures/api_frame_activities.txt";
     const size_t activities_size = read_file(activities_path, g_frame, sizeof(g_frame));
     CHECK(activities_size > 0);
-    if (activities_size > 0) test_activities_lines_are_skipped(activities_size);
+    if (activities_size > 0) test_sea_through_the_client(activities_size);
+    if (activities_size > 0) test_activities_lines_are_skipped(activities_size);  // last: it alters the buffer
     return test_report("vigie_api_client");
 }

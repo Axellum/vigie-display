@@ -62,6 +62,24 @@ enum class VigieText : uint8_t {
     TIDE_HIGH,             // "High water"
     TIDE_LOW,              // "Low water"
     COEFFICIENT_ESTIMATED, // format: one %u (coefficient, estimated by Vigie)
+    SEA_PAGE,              // the switch of the world page to the sea page
+    WORLD_PAGE,            // the switch of the sea page back to the world page
+    SEA_BEST_SLOT,         // above the best slot of an activity
+    SEA_NO_SLOT,           // no good slot in the next 24 hours
+    SEA_TIDE,              // title of the tide panel
+    SEA_NO_TIDE,           // no tide model near the spot
+    SEA_SUN,               // title of the sun panel
+    SEA_SUNRISE,
+    SEA_SUNSET,
+    SEA_NIGHT,             // legend: the dark bars are the night hours
+    SEA_LEGEND_BARS,       // legend: what a bar and the white line are
+    SEA_SCORE,             // format: two %d (points, out of)
+    SEA_DETAIL_TITLE,      // format: one %s (activity)
+    SEA_DETAIL_FOR,        // format: one %s (time of the hour the verdict stands on)
+    SEA_COL_CRITERION,     // column titles of the detail
+    SEA_COL_VALUE,
+    SEA_COL_SCORE,
+    SEA_COL_READING,
     COUNT_
 };
 
@@ -173,4 +191,24 @@ bool vigie_format_tide_coefficient(const VigieTideCoefficient& coefficient, char
 bool vigie_format_warning(const VigieSea& sea, int32_t offset_s, char* buf, size_t size);
 // Line about the age of the sea data (from vigie_sea_freshness()): "" and false when fresh.
 bool vigie_format_sea_status(const VigieSea& sea, VigieSeaFreshness freshness, uint32_t now_utc, char* buf, size_t size);
+// "Score 7 of 8" (FR "Note 7 sur 8"); false when unknown (negative, no maximum, more than the maximum).
+bool vigie_format_score(int points, int out_of, char* buf, size_t size);
+// "2/2", the points one criterion gave; false when unknown.
+bool vigie_format_criterion_points(const VigieCriterion& criterion, char* buf, size_t size);
+// "Surf · detail" (FR "Surf · détail").
+bool vigie_format_detail_title(VigieActivity activity, char* buf, size_t size);
+// "for 11:00" (FR "pour 11:00"), the hour the verdict of the detail stands on; false without a time.
+bool vigie_format_detail_hour(uint32_t utc, int32_t offset_s, char* buf, size_t size);
+
+// What the banner under the title bar of the sea page says, if anything.
+enum class VigieSeaBanner : uint8_t {
+    NONE = 0,             // nothing to say
+    WARNING = 1,          // a coastal warning stands: its level is `sea.warning_level`
+    WARNING_UNKNOWN = 2,  // the coastal warnings could not be read: never an all-clear
+    STATUS = 3,           // no sea data, too old, or some minutes old
+};
+// The most important thing to say, in `buf`. Too old or no data wins over a warning that is no
+// longer current; otherwise a warning (or the unreadable warnings) wins over the age.
+VigieSeaBanner vigie_format_sea_banner(const VigieSea& sea, VigieSeaFreshness freshness, uint32_t now_utc,
+                                       int32_t offset_s, char* buf, size_t size);
 

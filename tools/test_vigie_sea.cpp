@@ -421,12 +421,79 @@ void test_spot_id() {
     CHECK(!vigie_spot_id_valid(sixty_five) && vigie_spot_id_valid(sixty_five + 1));
 }
 
+// The tide curve of the sea page: a half cosine between the extremes the frame gives, nothing outside them.
+void test_tide_height() {
+    VigieSea sea{};
+    CHECK(vigie_decode_sea(g_real, sea));
+    CHECK(sea.tide_count == 6);
+    // The real extremes: low -1.66 m at 1794126780, high 1.71 m at 1794149460.
+    float h = 99.0f;
+    CHECK(vigie_tide_height_at(sea, 1794126780u, h) && std::fabs(h - (-1.66f)) < 0.001f);
+    CHECK(vigie_tide_height_at(sea, 1794149460u, h) && std::fabs(h - 1.71f) < 0.001f);
+    // Half way in time: half way in height (the cosine is symmetric).
+    CHECK(vigie_tide_height_at(sea, 1794138120u, h) && std::fabs(h - (-1.66f + 1.71f) / 2.0f) < 0.01f);
+    // Rising between a low and the next high, never above or below them.
+    float previous = -100.0f;
+    for (uint32_t t = 1794126780u; t <= 1794149460u; t += 900u) {
+        CHECK(vigie_tide_height_at(sea, t, h));
+        CHECK(h >= previous && h >= -1.661f && h <= 1.711f);
+        previous = h;
+    }
+    // Before the first extreme and after the last one: unknown, not extended.
+    h = 99.0f;
+    CHECK(!vigie_tide_height_at(sea, 1794126779u, h) && h == 99.0f);
+    CHECK(!vigie_tide_height_at(sea, 1794238021u, h) && h == 99.0f);
+    // An unknown height between two extremes: no curve there.
+    VigieSea unknown = sea;
+    unknown.tide[1].height_m = kVigieUnknown;
+    CHECK(!vigie_tide_height_at(unknown, 1794138120u, h));
+    // Extremes out of time order are not drawn.
+    VigieSea shuffled = sea;
+    shuffled.tide[1].utc = shuffled.tide[0].utc - 60u;
+    CHECK(!vigie_tide_height_at(shuffled, 1794126800u, h));
+    // No tide model near the spot: nothing, and one extreme alone is no curve.
+    VigieSea none{};
+    CHECK(!vigie_tide_height_at(none, 1794138120u, h));
+    none.tide_count = 1;
+    none.tide[0].utc = 1794126780u;
+    none.tide[0].height_m = 1.0f;
+    CHECK(!vigie_tide_height_at(none, 1794126780u, h));
+}
+
+// The coefficient of the next high water: the badge of the tide panel.
+void test_coefficient_for() {
+    VigieSea sea{};
+    CHECK(vigie_decode_sea(g_real, sea));
+    CHECK(sea.coefficient_count == 3);
+    CHECK(vigie_sea_coefficient_for(sea, 1794132000u) == 0 && sea.coefficients[0].value == 83);
+    CHECK(vigie_sea_coefficient_for(sea, 1794150900u) == 0);  // at the high water itself
+    CHECK(vigie_sea_coefficient_for(sea, 1794150901u) == 1 && sea.coefficients[1].value == 84);
+    CHECK(vigie_sea_coefficient_for(sea, 1794239401u) == -1);  // none still to come
+    VigieSea unknown = sea;
+    unknown.coefficients[0].value = 0;  // not known: skipped, never shown as 0
+    CHECK(vigie_sea_coefficient_for(unknown, 1794132000u) == 1);
+    CHECK(vigie_sea_coefficient_for(VigieSea{}, 1794132000u) == -1);
+}
+
+// The frame the CI renders with a coastal warning (the real frame plus an orange warning on its SEA line).
+void test_warning_fixture(const char* path) {
+    static char frame[32768];
+    CHECK(read_file(path, frame, sizeof(frame)) > 0);
+    VigieSea sea{};
+    CHECK(vigie_decode_sea(frame, sea));
+    CHECK(sea.warnings_known && sea.warning_present && sea.warning_level == VigieSeverity::ORANGE);
+    CHECK(sea.warning_until_utc == 1794160800u);
+    CHECK_STR(sea.warning_source, "Meteo-France");
+    CHECK_STR(sea.name, "Plage Sud (Point d'Or)");
+}
+
 }  // namespace
 
 int main(int argc, char** argv) {
     const char* path = argc > 2 ? argv[2] : "tests/fixtures/api_frame_activities.txt";
     const size_t size = read_file(path, g_real, sizeof(g_real));
     CHECK(size > 0);
+    test_warning_fixture(argc > 3 ? argv[3] : "tests/fixtures/api_frame_activities_warning.txt");
     // The sea is on the decoder's stack and in a global: it stays small (868 bytes when written).
     CHECK(sizeof(VigieSea) <= 1024);
     if (size > 0) test_real_frame();
@@ -437,5 +504,9 @@ int main(int argc, char** argv) {
     test_caps_and_order();
     test_names_and_vocabulary();
     test_spot_id();
+    if (size > 0) {
+        test_tide_height();
+        test_coefficient_for();
+    }
     return test_report("vigie_sea");
 }

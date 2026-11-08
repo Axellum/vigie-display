@@ -63,6 +63,24 @@ constexpr Pair kTexts[] = {
     {"High water", "Pleine mer"},
     {"Low water", "Basse mer"},
     {"Coefficient %u (estimated)", "Coefficient %u (estimé)"},
+    {"Sea", "Mer"},
+    {"World", "Monde"},
+    {"Best slot", "Meilleur créneau"},
+    {"none", "aucun"},
+    {"Tide", "Marée"},
+    {"No tide model near this spot", "Pas de marée connue pour ce lieu"},
+    {"Sun", "Soleil"},
+    {"Sunrise", "Lever"},
+    {"Sunset", "Coucher"},
+    {"night", "nuit"},
+    {"one bar = 1 hour · white line = now", "une barre = 1 heure · trait blanc = maintenant"},
+    {"Score %d of %d", "Note %d sur %d"},
+    {"%s · detail", "%s · détail"},
+    {"for %s", "pour %s"},
+    {"Criterion", "Critère"},
+    {"Value", "Valeur"},
+    {"Score", "Note"},
+    {"Reading", "Lecture"},
 };
 static_assert(sizeof(kTexts) / sizeof(kTexts[0]) == static_cast<size_t>(VigieText::COUNT_),
               "kTexts must have one line per VigieText");
@@ -656,4 +674,42 @@ bool vigie_format_sea_status(const VigieSea& sea, VigieSeaFreshness freshness, u
         }
         default: return false;  // fresh: nothing to say
     }
+}
+
+bool vigie_format_score(int points, int out_of, char* buf, size_t size) {
+    if (!clear(buf, size) || points < 0 || out_of <= 0 || points > out_of) return false;
+    return written(std::snprintf(buf, size, vigie_tr(VigieText::SEA_SCORE), points, out_of), size);
+}
+
+bool vigie_format_criterion_points(const VigieCriterion& criterion, char* buf, size_t size) {
+    if (!clear(buf, size) || criterion.points < 0 || criterion.max_points <= 0 || criterion.points > criterion.max_points) {
+        return false;
+    }
+    return written(std::snprintf(buf, size, "%d/%d", criterion.points, criterion.max_points), size);
+}
+
+bool vigie_format_detail_title(VigieActivity activity, char* buf, size_t size) {
+    if (!clear(buf, size)) return false;
+    const char* name = vigie_activity_name(activity);
+    if (name[0] == '\0') return false;
+    return written(std::snprintf(buf, size, vigie_tr(VigieText::SEA_DETAIL_TITLE), name), size);
+}
+
+bool vigie_format_detail_hour(uint32_t utc, int32_t offset_s, char* buf, size_t size) {
+    char clock[8];
+    if (!clear(buf, size) || !vigie_format_clock(utc, offset_s, clock, sizeof(clock))) return false;
+    return written(std::snprintf(buf, size, vigie_tr(VigieText::SEA_DETAIL_FOR), clock), size);
+}
+
+VigieSeaBanner vigie_format_sea_banner(const VigieSea& sea, VigieSeaFreshness freshness, uint32_t now_utc,
+                                       int32_t offset_s, char* buf, size_t size) {
+    if (!clear(buf, size)) return VigieSeaBanner::NONE;
+    // No data, or too old: the verdicts are not shown, so a warning of that data is not current either.
+    if (freshness == VigieSeaFreshness::NONE || freshness == VigieSeaFreshness::EXPIRED) {
+        return vigie_format_sea_status(sea, freshness, now_utc, buf, size) ? VigieSeaBanner::STATUS : VigieSeaBanner::NONE;
+    }
+    if (vigie_format_warning(sea, offset_s, buf, size)) {
+        return sea.warnings_known ? VigieSeaBanner::WARNING : VigieSeaBanner::WARNING_UNKNOWN;
+    }
+    return vigie_format_sea_status(sea, freshness, now_utc, buf, size) ? VigieSeaBanner::STATUS : VigieSeaBanner::NONE;
 }

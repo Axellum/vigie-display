@@ -389,6 +389,81 @@ void test_sea_warning_and_status() {
     vigie_set_language(VigieLanguage::EN);
 }
 
+// The sentences the sea page adds, and the banner that says the most important thing.
+void test_sea_page_texts() {
+    char buf[96];
+    vigie_set_language(VigieLanguage::EN);
+    CHECK(vigie_format_score(7, 8, buf, sizeof(buf)) && std::strcmp(buf, "Score 7 of 8") == 0);
+    CHECK(vigie_format_score(0, 8, buf, sizeof(buf)) && std::strcmp(buf, "Score 0 of 8") == 0);  // a real zero
+    CHECK(!vigie_format_score(-1, 8, buf, sizeof(buf)) && buf[0] == '\0');  // unknown is not 0
+    CHECK(!vigie_format_score(5, -1, buf, sizeof(buf)) && !vigie_format_score(5, 0, buf, sizeof(buf)));
+    CHECK(!vigie_format_score(9, 8, buf, sizeof(buf)));
+    VigieCriterion c{};
+    CHECK(!vigie_format_criterion_points(c, buf, sizeof(buf)) && buf[0] == '\0');
+    c.points = 2;
+    c.max_points = 2;
+    CHECK(vigie_format_criterion_points(c, buf, sizeof(buf)) && std::strcmp(buf, "2/2") == 0);
+    c.points = 0;
+    CHECK(vigie_format_criterion_points(c, buf, sizeof(buf)) && std::strcmp(buf, "0/2") == 0);
+    c.max_points = -1;
+    CHECK(!vigie_format_criterion_points(c, buf, sizeof(buf)));
+    CHECK(vigie_format_detail_title(VigieActivity::SURF, buf, sizeof(buf)) && std::strcmp(buf, "Surf \xC2\xB7 detail") == 0);
+    CHECK(!vigie_format_detail_title(VigieActivity::COUNT_, buf, sizeof(buf)) && buf[0] == '\0');
+    CHECK(vigie_format_detail_hour(1794132000u, 3600, buf, sizeof(buf)) && std::strcmp(buf, "for 11:00") == 0);
+    CHECK(!vigie_format_detail_hour(0, 0, buf, sizeof(buf)));
+    vigie_set_language(VigieLanguage::FR);
+    CHECK(vigie_format_score(7, 8, buf, sizeof(buf)) && std::strcmp(buf, "Note 7 sur 8") == 0);
+    CHECK(vigie_format_detail_title(VigieActivity::SURF, buf, sizeof(buf)) && std::strcmp(buf, "Surf \xC2\xB7 d\xC3\xA9" "tail") == 0);
+    CHECK(vigie_format_detail_hour(1794132000u, 3600, buf, sizeof(buf)) && std::strcmp(buf, "pour 11:00") == 0);
+
+    // Every new text has both languages.
+    for (int language = 0; language < 2; ++language) {
+        vigie_set_language(language == 0 ? VigieLanguage::EN : VigieLanguage::FR);
+        for (int id = static_cast<int>(VigieText::SEA_PAGE); id < static_cast<int>(VigieText::COUNT_); ++id) {
+            CHECK(vigie_tr(static_cast<VigieText>(id))[0] != '\0');
+        }
+    }
+    vigie_set_language(VigieLanguage::EN);
+    CHECK_STR(vigie_tr(VigieText::SEA_PAGE), "Sea");
+    CHECK_STR(vigie_tr(VigieText::WORLD_PAGE), "World");
+    vigie_set_language(VigieLanguage::FR);
+    CHECK_STR(vigie_tr(VigieText::SEA_PAGE), "Mer");
+    CHECK_STR(vigie_tr(VigieText::WORLD_PAGE), "Monde");
+
+    // The banner. Nothing received: it says so.
+    vigie_set_language(VigieLanguage::EN);
+    VigieSea sea{};
+    CHECK(vigie_format_sea_banner(sea, VigieSeaFreshness::NONE, 0, 0, buf, sizeof(buf)) == VigieSeaBanner::STATUS &&
+          std::strcmp(buf, "Sea data unavailable") == 0);
+    sea.valid = true;
+    sea.generated_utc = 1794133609u;
+    sea.warnings_known = true;
+    // A fresh sea with no warning: nothing to say.
+    CHECK(vigie_format_sea_banner(sea, VigieSeaFreshness::FRESH, 1794133609u, 0, buf, sizeof(buf)) == VigieSeaBanner::NONE &&
+          buf[0] == '\0');
+    // A warning is the banner, with its level.
+    sea.warning_present = true;
+    sea.warning_level = VigieSeverity::ORANGE;
+    sea.warning_until_utc = 1794139200u;
+    CHECK(vigie_format_sea_banner(sea, VigieSeaFreshness::FRESH, 1794133609u, 3600, buf, sizeof(buf)) == VigieSeaBanner::WARNING &&
+          std::strcmp(buf, "Orange coastal warning \xC2\xB7 until 13:00") == 0);
+    // A warning wins over the age of a sea that is some minutes old.
+    CHECK(vigie_format_sea_banner(sea, VigieSeaFreshness::STALE, 1794133609u + 720u, 3600, buf, sizeof(buf)) == VigieSeaBanner::WARNING);
+    // A sea too old shows no verdict, so a warning of that data is not current: the age is the banner.
+    CHECK(vigie_format_sea_banner(sea, VigieSeaFreshness::EXPIRED, 1794133609u + 99999u, 3600, buf, sizeof(buf)) == VigieSeaBanner::STATUS &&
+          std::strcmp(buf, "Sea data too old") == 0);
+    // Warnings that could not be read are said, never an all-clear.
+    sea.warnings_known = false;
+    sea.warning_present = false;
+    CHECK(vigie_format_sea_banner(sea, VigieSeaFreshness::FRESH, 1794133609u, 0, buf, sizeof(buf)) == VigieSeaBanner::WARNING_UNKNOWN &&
+          std::strcmp(buf, "Coastal warnings unavailable") == 0);
+    // No warning, but the data is some minutes old: the age.
+    sea.warnings_known = true;
+    CHECK(vigie_format_sea_banner(sea, VigieSeaFreshness::STALE, 1794133609u + 720u, 0, buf, sizeof(buf)) == VigieSeaBanner::STATUS &&
+          std::strcmp(buf, "Sea data \xC2\xB7 12 min ago") == 0);
+    vigie_set_language(VigieLanguage::EN);
+}
+
 }  // namespace
 
 int main() {
@@ -399,5 +474,6 @@ int main() {
     test_sea_names_and_vocabulary();
     test_sea_values_and_lines();
     test_sea_warning_and_status();
+    test_sea_page_texts();
     return test_report("vigie_text");
 }
