@@ -31,7 +31,7 @@ bool format_short_age(uint32_t age_s, char* buf, size_t size) {
 }  // namespace
 
 bool vigie_build_frame_url(const char* base_url, const char* device_type, const VigieGpsFix& gps, char* buf,
-                           size_t size) {
+                           size_t size, const char* spot_id) {
     if (buf == nullptr || size < 32 || base_url == nullptr || base_url[0] == '\0') {
         if (buf != nullptr && size > 0) buf[0] = '\0';
         return false;
@@ -47,7 +47,12 @@ bool vigie_build_frame_url(const char* base_url, const char* device_type, const 
         n = std::snprintf(buf, size, "%.*s/v1/embedded/frame?device_type=%s", static_cast<int>(base_len), base_url,
                           device);
     }
-    return n > 0 && static_cast<size_t>(n) < size;
+    if (n <= 0 || static_cast<size_t>(n) >= size) return false;
+    if (vigie_spot_id_valid(spot_id)) {
+        const int extra = std::snprintf(buf + n, size - static_cast<size_t>(n), "&spot=%s", spot_id);
+        if (extra <= 0 || static_cast<size_t>(n + extra) >= size) return false;
+    }
+    return true;
 }
 
 VigieLinkState vigie_link_state(const VigieLinkStatus& status, uint32_t now_ms) {

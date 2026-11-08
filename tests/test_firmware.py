@@ -200,8 +200,14 @@ def cxx_command() -> list[str] | None:
 
 CPP_TESTS = {
     "test_vigie_model": ["firmware/core/vigie_model.cpp"],
-    "test_vigie_text": ["firmware/core/vigie_text.cpp", "firmware/core/vigie_model.cpp"],
-    "test_vigie_api_client": ["firmware/core/vigie_api_client.cpp", "firmware/core/vigie_text.cpp", "firmware/core/vigie_model.cpp"],
+    "test_vigie_sea": ["firmware/core/vigie_sea.cpp", "firmware/core/vigie_model.cpp"],
+    "test_vigie_text": ["firmware/core/vigie_text.cpp", "firmware/core/vigie_sea.cpp", "firmware/core/vigie_model.cpp"],
+    "test_vigie_api_client": [
+        "firmware/core/vigie_api_client.cpp",
+        "firmware/core/vigie_sea.cpp",
+        "firmware/core/vigie_text.cpp",
+        "firmware/core/vigie_model.cpp",
+    ],
 }
 
 

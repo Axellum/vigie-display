@@ -18,6 +18,7 @@
 #include <cstdint>
 
 #include "vigie_model.h"
+#include "vigie_sea.h"
 
 // Older data than this (three missed 60 s refreshes): the link is down.
 constexpr uint32_t kVigieStaleAfterMs = 180000;
@@ -37,9 +38,11 @@ enum class VigieLinkState : uint8_t {
 };
 
 // "<base_url>/v1/embedded/frame?device_type=<device>" plus "&lat=…&lon=…&marine=1" with a
-// valid GPS fix. A trailing '/' on `base_url` is ignored.
+// valid GPS fix, plus "&spot=<id>" when `spot_id` is given and valid (vigie_spot_id_valid(): the
+// frame then carries the sea of that surf spot). An empty or invalid `spot_id` is left out, so a
+// typo cannot stop the weather. A trailing '/' on `base_url` is ignored.
 bool vigie_build_frame_url(const char* base_url, const char* device_type, const VigieGpsFix& gps, char* buf,
-                           size_t size);
+                           size_t size, const char* spot_id = nullptr);
 
 VigieLinkState vigie_link_state(const VigieLinkStatus& status, uint32_t now_ms);
 

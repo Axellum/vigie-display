@@ -36,6 +36,23 @@ void test_url() {
     CHECK(vigie_build_frame_url("http://h", "tab5", gps, url, sizeof(url)));
     CHECK(std::strstr(url, "&lat=48.85650&lon=2.35220&marine=1") != nullptr);
     CHECK(!vigie_build_frame_url("", "tab5", gps, url, sizeof(url)));
+
+    // The surf spot asks for the sea block; an empty or invalid id is left out (the weather must not
+    // depend on a typo), and a URL that does not fit is refused.
+    CHECK(vigie_build_frame_url("http://h", "tab5", gps, url, sizeof(url), "soorts-hossegor-plage-sud-point-d-or"));
+    CHECK_STR(url, "http://h/v1/embedded/frame?device_type=tab5&lat=48.85650&lon=2.35220&marine=1"
+                   "&spot=soorts-hossegor-plage-sud-point-d-or");
+    gps.valid = false;
+    CHECK(vigie_build_frame_url("http://h/", "tab5", gps, url, sizeof(url), "spot_1"));
+    CHECK_STR(url, "http://h/v1/embedded/frame?device_type=tab5&spot=spot_1");
+    const char* const ignored[] = {nullptr, "", "Spot", "a&b=c", "a b", "../x"};
+    for (const char* spot : ignored) {
+        CHECK(vigie_build_frame_url("http://h", "tab5", gps, url, sizeof(url), spot));
+        CHECK_STR(url, "http://h/v1/embedded/frame?device_type=tab5");
+    }
+    char small[64];
+    CHECK(vigie_build_frame_url("http://h", "tab5", gps, small, sizeof(small)));
+    CHECK(!vigie_build_frame_url("http://h", "tab5", gps, small, sizeof(small), "soorts-hossegor-plage-sud-point-d-or"));
 }
 
 void test_real_frame(size_t size) {

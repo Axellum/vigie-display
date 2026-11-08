@@ -24,23 +24,47 @@ source (every line type, every column, units). This page only says how the displ
 - A line whose tag the display does not know is skipped, and the CRC still covers it. This is how
   vigie-api can add lines without breaking a display that is not updated yet.
 
-## Lines the display does not read yet
+## The sea of a surf spot: `SEA`, `ACT`, `CRIT`
 
 For a request with `&spot=<id>` (a surf spot), vigie-api adds `SEA`, `ACT` and `CRIT` lines after
-the `HAZ` lines: the sea of the spot (tides, sun, the strongest warning) and, for each activity
-(surf, kite, boat, shore fishing), a verdict, its 24 hourly marks and the criteria behind it. Their
-columns are in vigie-api's `docs/embedded-frame.md`. **This firmware does not ask for a spot and
-does not read these lines**: it skips them and decodes the rest exactly as before. The screen that
-shows them is built on top of this.
+the `HAZ` lines: the sea of the spot (tides, sun, the strongest coastal warning) and, for each
+activity (surf, kite, boat, shore fishing), a verdict, its 24 hourly marks and the criteria behind
+it. Their columns are in vigie-api's `docs/embedded-frame.md`.
+
+`firmware/core/vigie_sea.*` decodes them into a `VigieSea`, separate from the world state (that one
+is saved in NVS, the sea is not). The rules it keeps:
+
+- `vigie_update_sea()` replaces the sea only with a good frame that carries the block. A good
+  frame without it (no spot asked, or the swell could not be read) is **unknown, not "nothing to
+  do"**: the previous sea stays and gets older. `vigie_sea_freshness()` says how old: fresh, stale
+  (the API serves a provider's last answer, or the data is over 10 minutes old: the screen says
+  how old), expired (over 6 hours, or the 24 hours of the strips are over: the verdicts are not
+  shown).
+- An empty field stays unknown. Coastal warnings that could not be read are **not** "no warning"
+  (`vigie_format_warning()` says they are unavailable); a warning level the firmware does not know
+  counts as unreadable too.
+- A `CRIT` line belongs to the `ACT` line just above it, for the same activity. A name or a state
+  the firmware does not know is not shown: `vigie_criterion_state_text()` has a text only for the
+  pairs of the contract's vocabulary table, and `tools/test_vocabulary.h` holds a copy of that
+  table that the tests check against the decoder and the texts.
+- Times are UTC; the frame has no UTC offset for the spot, so the screen uses the offset of the
+  zone it shows. Every verdict is a rule of Vigie, not an official one, and not for safety
+  (`SEA_RULES_NOTICE`); the tide coefficient is Vigie's estimate, not the SHOM's.
+- `vigie_build_frame_url()` takes an optional spot id and adds `&spot=<id>`; an empty or invalid
+  id (`vigie_spot_id_valid()`: a-z, 0-9, `-`, `_`) is left out, so a typo cannot stop the weather.
+
+**The firmware does not ask for a spot yet and no screen shows the sea**: the URL builder and the
+decoder are ready and tested; wiring them to a setting and to the screen is the next step.
 
 ## Fixtures
 
 - `tests/fixtures/api_frame.txt` is a real frame captured from vigie-api (its `tools/capture_frame.py`);
   `tools/test_vigie_api_client.cpp` decodes it.
 - `tests/fixtures/api_frame_activities.txt` is a real frame with the block above, captured for a
-  surf spot of the Landes coast. `tools/test_vigie_api_client.cpp` checks that the display accepts
-  it, that removing the block and signing the frame again gives the same decoded world, and that
-  altering a byte of the block is still refused by the CRC. `tools/test_vigie_model.cpp` checks the
-  same with small frames and an unknown tag.
+  surf spot of the Landes coast. `tools/test_vigie_sea.cpp` decodes it value by value;
+  `tools/test_vigie_api_client.cpp` checks that the display accepts it, that removing the block and
+  signing the frame again gives the same decoded world, and that altering a byte of the block is
+  still refused by the CRC. `tools/test_vigie_model.cpp` checks the same with small frames and an
+  unknown tag.
 
 Refresh both when the contract changes (`docs/development.md`).

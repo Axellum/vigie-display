@@ -51,6 +51,18 @@ constexpr Pair kTexts[] = {
     {"Up to date · %s ago", "À jour · il y a %s"},
     {"API unreachable", "API injoignable"},
     {"API unreachable · data from %s ago", "API injoignable · données d'il y a %s"},
+    {"Sea data unavailable", "Mer : données indisponibles"},
+    {"Sea data · %s", "Mer · %s"},
+    {"Some sea data is from an earlier reading", "Certaines données de mer datent d'une lecture précédente"},
+    {"Sea data too old", "Données de mer trop anciennes"},
+    {"Vigie's own rules, not for safety", "Règles de Vigie, pas pour la sécurité"},
+    {"Coastal warnings unavailable", "Vigilances côtières indisponibles"},
+    {"%s coastal warning", "Vigilance côtière %s"},
+    {"%s coastal warning · until %s", "Vigilance côtière %s · jusqu'à %s"},
+    {"Not available here", "Indisponible ici"},
+    {"High water", "Pleine mer"},
+    {"Low water", "Basse mer"},
+    {"Coefficient %u (estimated)", "Coefficient %u (estimé)"},
 };
 static_assert(sizeof(kTexts) / sizeof(kTexts[0]) == static_cast<size_t>(VigieText::COUNT_),
               "kTexts must have one line per VigieText");
@@ -116,6 +128,110 @@ const char* vigie_tr(VigieText id) {
     if (i >= sizeof(kTexts) / sizeof(kTexts[0])) return "";
     return pick(kTexts[i].en, kTexts[i].fr);
 }
+
+// ─── Sea texts: tables ──────────────────────────────────────────────────────
+
+namespace {
+
+constexpr Pair kActivityNames[] = {
+    {"Surf", "Surf"},
+    {"Kite / wing", "Kite / wing"},
+    {"Boat", "Bateau"},
+    {"Shore fishing", "Pêche à pied"},
+};
+static_assert(sizeof(kActivityNames) / sizeof(kActivityNames[0]) == static_cast<size_t>(VigieActivity::COUNT_),
+              "kActivityNames must have one line per VigieActivity");
+
+// Indexed by VigieVerdict.
+constexpr Pair kVerdictLabels[] = {{"", ""}, {"Good", "Bon"}, {"Possible", "Possible"}, {"Not advised", "Déconseillé"}};
+
+// Indexed by VigieCriterionId.
+constexpr Pair kCriterionLabels[] = {
+    {"", ""},
+    {"Swell", "Houle"},
+    {"Swell period", "Période de houle"},
+    {"Swell direction", "Direction de la houle"},
+    {"Wind", "Vent"},
+    {"Tide", "Marée"},
+    {"Gust gap", "Écart des rafales"},
+    {"Wind direction", "Direction du vent"},
+    {"Wind", "Vent"},
+    {"Gusts", "Rafales"},
+    {"Sea", "Mer"},
+    {"Low water", "Basse mer"},
+    {"Coefficient (est.)", "Coefficient (est.)"},
+    {"Coastal warning", "Vigilance côtière"},
+};
+static_assert(sizeof(kCriterionLabels) / sizeof(kCriterionLabels[0]) == static_cast<size_t>(VigieCriterionId::COUNT_),
+              "kCriterionLabels must have one line per VigieCriterionId");
+
+struct StateText {
+    VigieCriterionId criterion;
+    VigieCriterionState state;
+    const char* en;
+    const char* fr;
+};
+
+// The vocabulary of the contract (vigie-api docs/embedded-frame.md, table of the criteria), one
+// line per pair; tools/test_vigie_sea.cpp keeps a copy of the contract's table and checks it.
+using C = VigieCriterionId;
+using S = VigieCriterionState;
+constexpr StateText kStateTexts[] = {
+    {C::SWELL_HEIGHT, S::TOO_SMALL, "too small", "trop petite"},
+    {C::SWELL_HEIGHT, S::SMALL, "small", "petite"},
+    {C::SWELL_HEIGHT, S::RIGHT, "right size", "bonne taille"},
+    {C::SWELL_HEIGHT, S::BIG, "big", "grosse"},
+    {C::SWELL_HEIGHT, S::TOO_BIG, "too big", "trop grosse"},
+    {C::SWELL_PERIOD, S::SHORT, "short", "courte"},
+    {C::SWELL_PERIOD, S::MEDIUM, "medium", "moyenne"},
+    {C::SWELL_PERIOD, S::LONG, "long", "longue"},
+    {C::SWELL_DIRECTION, S::FACING, "facing the beach", "face à la plage"},
+    {C::SWELL_DIRECTION, S::OBLIQUE, "oblique", "de biais"},
+    {C::SWELL_DIRECTION, S::OFF_AXIS, "off axis", "hors axe"},
+    {C::WIND, S::LIGHT, "light", "faible"},
+    {C::WIND, S::OFFSHORE, "offshore", "de terre"},
+    {C::WIND, S::CROSS_SHORE, "cross-shore", "de travers"},
+    {C::WIND, S::ONSHORE, "onshore", "de mer"},
+    {C::WIND, S::STRONG, "strong", "fort"},
+    {C::WIND, S::IN_RANGE, "in your range", "dans votre plage"},
+    {C::WIND, S::A_BIT_LIGHT, "a bit light", "un peu faible"},
+    {C::WIND, S::A_BIT_STRONG, "a bit strong", "un peu fort"},
+    {C::WIND, S::TOO_LIGHT, "too light", "trop faible"},
+    {C::WIND, S::TOO_STRONG, "too strong", "trop fort"},
+    {C::TIDE, S::RIGHT_STAGE, "right stage", "bon moment"},
+    {C::TIDE, S::WRONG_STAGE, "wrong stage", "mauvais moment"},
+    {C::GUST_GAP, S::STEADY, "steady", "régulier"},
+    {C::GUST_GAP, S::GUSTY, "gusty", "rafaleux"},
+    {C::GUST_GAP, S::VERY_GUSTY, "very gusty", "très rafaleux"},
+    {C::WIND_DIRECTION, S::ONSHORE, "onshore", "de mer"},
+    {C::WIND_DIRECTION, S::OFFSHORE, "offshore", "de terre"},
+    {C::WIND_DIRECTION, S::CROSS_SHORE, "cross-shore", "de travers"},
+    {C::WIND_FORCE, S::UP_TO_MODERATE, "moderate or less", "modéré ou moins"},
+    {C::WIND_FORCE, S::FRESH, "fresh", "bon frais"},
+    {C::WIND_FORCE, S::STRONG_OR_MORE, "strong or more", "fort ou plus"},
+    {C::WIND_FORCE, S::UP_TO_FRESH, "fresh or less", "bon frais ou moins"},
+    {C::WIND_FORCE, S::STRONG, "strong", "fort"},
+    {C::WIND_FORCE, S::NEAR_GALE_OR_MORE, "near gale or more", "grand frais ou plus"},
+    {C::GUST_FORCE, S::UP_TO_FRESH, "fresh or less", "bon frais ou moins"},
+    {C::GUST_FORCE, S::STRONG, "strong", "fort"},
+    {C::GUST_FORCE, S::GALE_OR_MORE, "gale or more", "coup de vent ou plus"},
+    {C::SEA_HEIGHT, S::LOW, "low", "faible"},
+    {C::SEA_HEIGHT, S::MODERATE, "moderate", "modérée"},
+    {C::SEA_HEIGHT, S::HIGH, "high", "forte"},
+    {C::LOW_WATER, S::IN_WINDOW, "in the window", "dans la fenêtre"},
+    {C::LOW_WATER, S::OUTSIDE_WINDOW, "outside the window", "hors fenêtre"},
+    {C::COEFFICIENT, S::SMALL, "small", "faible"},
+    {C::COEFFICIENT, S::MODERATE, "moderate", "moyen"},
+    {C::COEFFICIENT, S::LARGE, "large", "fort"},
+    {C::COEFFICIENT, S::VERY_LARGE, "very large", "très fort"},
+    {C::VIGILANCE, S::ORANGE, "orange", "orange"},
+    {C::VIGILANCE, S::RED, "red", "rouge"},
+};
+
+// Indexed by VigieSeverity.
+constexpr Pair kWarningLevels[] = {{"Green", "verte"}, {"Yellow", "jaune"}, {"Orange", "orange"}, {"Red", "rouge"}};
+
+}  // namespace
 
 // ─── World map ──────────────────────────────────────────────────────────────
 
@@ -429,4 +545,115 @@ bool vigie_format_day_rain(const VigieDayForecast& day, char* buf, size_t size) 
         return false;
     }
     return written(std::snprintf(buf, size, "%s mm", amount), size);
+}
+
+// ─── Sea texts ──────────────────────────────────────────────────────────────
+
+const char* vigie_activity_name(VigieActivity activity) {
+    const size_t i = static_cast<size_t>(activity);
+    if (i >= sizeof(kActivityNames) / sizeof(kActivityNames[0])) return "";
+    return pick(kActivityNames[i].en, kActivityNames[i].fr);
+}
+
+const char* vigie_verdict_label(VigieVerdict verdict) {
+    const size_t i = static_cast<size_t>(verdict);
+    if (i >= sizeof(kVerdictLabels) / sizeof(kVerdictLabels[0])) return "";
+    return pick(kVerdictLabels[i].en, kVerdictLabels[i].fr);
+}
+
+const char* vigie_criterion_label(VigieCriterionId criterion) {
+    const size_t i = static_cast<size_t>(criterion);
+    if (i >= sizeof(kCriterionLabels) / sizeof(kCriterionLabels[0])) return "";
+    return pick(kCriterionLabels[i].en, kCriterionLabels[i].fr);
+}
+
+const char* vigie_criterion_state_text(VigieCriterionId criterion, VigieCriterionState state) {
+    for (const StateText& t : kStateTexts) {
+        if (t.criterion == criterion && t.state == state) return pick(t.en, t.fr);
+    }
+    return "";
+}
+
+bool vigie_format_criterion_value(const VigieCriterion& criterion, char* buf, size_t size) {
+    if (!clear(buf, size) || !vigie_known(criterion.value)) return false;
+    const long rounded = std::lround(static_cast<double>(criterion.value));
+    char decimal[16];
+    switch (criterion.unit) {
+        case VigieUnit::METRES:
+            return vigie_format_decimal(criterion.value, 1, decimal, sizeof(decimal)) &&
+                   written(std::snprintf(buf, size, "%s m", decimal), size);
+        case VigieUnit::KNOTS:
+            return vigie_format_decimal(criterion.value, 1, decimal, sizeof(decimal)) &&
+                   written(std::snprintf(buf, size, "%s kn", decimal), size);
+        case VigieUnit::SECONDS: return written(std::snprintf(buf, size, "%ld s", rounded), size);
+        case VigieUnit::DEGREES: return written(std::snprintf(buf, size, "%ld\xC2\xB0", rounded), size);
+        case VigieUnit::KMH: return written(std::snprintf(buf, size, "%ld km/h", rounded), size);
+        case VigieUnit::BEAUFORT: return written(std::snprintf(buf, size, "Force %ld", rounded), size);
+        case VigieUnit::MINUTES: return written(std::snprintf(buf, size, "%ld min", rounded), size);
+        case VigieUnit::NONE: return written(std::snprintf(buf, size, "%ld", rounded), size);
+        default: return false;
+    }
+}
+
+bool vigie_format_reason(const VigieActivityForecast& activity, char* buf, size_t size) {
+    if (!clear(buf, size)) return false;
+    const char* state = vigie_criterion_state_text(activity.reason_criterion, activity.reason_state);
+    if (state[0] == '\0') return false;
+    return written(std::snprintf(buf, size, fr() ? "%s : %s" : "%s: %s", vigie_criterion_label(activity.reason_criterion), state),
+                   size);
+}
+
+bool vigie_format_slot(uint32_t start_utc, uint32_t end_utc, int32_t offset_s, char* buf, size_t size) {
+    if (!clear(buf, size) || start_utc == 0 || end_utc <= start_utc) return false;
+    char from[8], to[8];
+    if (!vigie_format_clock(start_utc, offset_s, from, sizeof(from)) || !vigie_format_clock(end_utc, offset_s, to, sizeof(to))) {
+        return false;
+    }
+    return written(std::snprintf(buf, size, "%s\xE2\x80\x93%s", from, to), size);
+}
+
+bool vigie_format_tide_extreme(const VigieTideExtreme& extreme, int32_t offset_s, char* buf, size_t size) {
+    char clock[8], height[16];
+    if (!clear(buf, size) || !vigie_format_clock(extreme.utc, offset_s, clock, sizeof(clock))) return false;
+    const char* label = vigie_tr(extreme.high ? VigieText::TIDE_HIGH : VigieText::TIDE_LOW);
+    if (!vigie_format_decimal(extreme.height_m, 1, height, sizeof(height))) {
+        return written(std::snprintf(buf, size, "%s %s", label, clock), size);
+    }
+    return written(std::snprintf(buf, size, "%s %s \xC2\xB7 %s m", label, clock, height), size);
+}
+
+bool vigie_format_tide_coefficient(const VigieTideCoefficient& coefficient, char* buf, size_t size) {
+    if (!clear(buf, size) || coefficient.value == 0) return false;
+    return written(std::snprintf(buf, size, vigie_tr(VigieText::COEFFICIENT_ESTIMATED), static_cast<unsigned>(coefficient.value)),
+                   size);
+}
+
+bool vigie_format_warning(const VigieSea& sea, int32_t offset_s, char* buf, size_t size) {
+    if (!clear(buf, size) || !sea.valid) return false;
+    // Could not be read: say so, which is not "nothing to fear".
+    if (!sea.warnings_known) return written(std::snprintf(buf, size, "%s", vigie_tr(VigieText::SEA_WARNINGS_UNKNOWN)), size);
+    if (!sea.warning_present || sea.warning_level == VigieSeverity::GREEN) return false;
+    const size_t level = static_cast<size_t>(sea.warning_level);
+    const char* name = pick(kWarningLevels[level].en, kWarningLevels[level].fr);
+    char until[8];
+    if (vigie_format_clock(sea.warning_until_utc, offset_s, until, sizeof(until))) {
+        return written(std::snprintf(buf, size, vigie_tr(VigieText::SEA_WARNING_UNTIL), name, until), size);
+    }
+    return written(std::snprintf(buf, size, vigie_tr(VigieText::SEA_WARNING), name), size);
+}
+
+bool vigie_format_sea_status(const VigieSea& sea, VigieSeaFreshness freshness, uint32_t now_utc, char* buf, size_t size) {
+    if (!clear(buf, size)) return false;
+    switch (freshness) {
+        case VigieSeaFreshness::NONE: return written(std::snprintf(buf, size, "%s", vigie_tr(VigieText::SEA_UNAVAILABLE)), size);
+        case VigieSeaFreshness::EXPIRED: return written(std::snprintf(buf, size, "%s", vigie_tr(VigieText::SEA_EXPIRED)), size);
+        case VigieSeaFreshness::STALE: {
+            // A provider's last answer is served: say so, whatever the age of the frame.
+            if (sea.stale) return written(std::snprintf(buf, size, "%s", vigie_tr(VigieText::SEA_PROVIDER_STALE)), size);
+            char age[40];
+            if (!vigie_format_age(now_utc, sea.generated_utc, age, sizeof(age))) return false;
+            return written(std::snprintf(buf, size, vigie_tr(VigieText::SEA_AGE), age), size);
+        }
+        default: return false;  // fresh: nothing to say
+    }
 }

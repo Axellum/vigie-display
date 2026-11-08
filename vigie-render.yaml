@@ -27,6 +27,8 @@ esphome:
   includes:
     - firmware/core/vigie_model.h
     - firmware/core/vigie_model.cpp
+    - firmware/core/vigie_sea.h
+    - firmware/core/vigie_sea.cpp
     - firmware/core/vigie_text.h
     - firmware/core/vigie_text.cpp
     - firmware/core/vigie_api_client.h

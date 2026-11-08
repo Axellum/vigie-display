@@ -7,6 +7,12 @@ All notable changes to this project are documented here. Format:
 
 ### Added
 
+- The core reads the sea of a surf spot (`firmware/core/vigie_sea.*`): the `SEA`, `ACT` and `CRIT` lines of
+  the frame, for surf, kite, boat and shore fishing: a verdict per hour for 24 hours, the best slot, the
+  criteria behind it, the tide, the sun, the strongest coastal warning, and how old it is. Unknown stays
+  unknown: a frame without the block, or warnings that could not be read, are never shown as "nothing to
+  fear". Its sentences are in English and French (`vigie_text.*`), and the frame URL can ask for a spot
+  (`&spot=<id>`). Nothing asks for a spot or draws the sea yet.
 - A second API frame fixture, with the `SEA`, `ACT` and `CRIT` lines vigie-api now adds for a surf
   spot, and tests that the display accepts such a frame, skips those lines and decodes the rest
   exactly as before. The firmware does not ask for a spot and does not read them yet.

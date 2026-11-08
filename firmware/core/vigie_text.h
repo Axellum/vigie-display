@@ -20,6 +20,7 @@
 #include <cstdint>
 
 #include "vigie_model.h"
+#include "vigie_sea.h"
 
 // ─── Language ───────────────────────────────────────────────────────────────
 enum class VigieLanguage : uint8_t { EN = 0, FR = 1 };
@@ -49,6 +50,18 @@ enum class VigieText : uint8_t {
     LINK_UP_TO_DATE,   // format: one %s (age)
     LINK_DOWN,
     LINK_DOWN_SINCE,   // format: one %s (age)
+    SEA_UNAVAILABLE,       // no sea data (yet, or none for this spot)
+    SEA_AGE,               // format: one %s (age, "12 min ago"): sea data some minutes old
+    SEA_PROVIDER_STALE,    // the API served the last answer of a provider
+    SEA_EXPIRED,           // too old (or the 24 hours are over): the verdicts are not shown
+    SEA_RULES_NOTICE,      // every verdict is a rule of Vigie, not an official one
+    SEA_WARNINGS_UNKNOWN,  // the coastal warnings could not be read: not an all-clear
+    SEA_WARNING,           // format: one %s (level)
+    SEA_WARNING_UNTIL,     // format: two %s (level, time)
+    SEA_NOT_AVAILABLE,     // an activity that cannot be judged here
+    TIDE_HIGH,             // "High water"
+    TIDE_LOW,              // "Low water"
+    COEFFICIENT_ESTIMATED, // format: one %u (coefficient, estimated by Vigie)
     COUNT_
 };
 
@@ -133,3 +146,31 @@ bool vigie_format_air_quality(uint16_t aqi, char* buf, size_t size);
 bool vigie_format_waves(const VigieMarine& marine, char* buf, size_t size);
 // Rain of a forecast day: its probability "98%", else its amount "5.6 mm" when above 0.
 bool vigie_format_day_rain(const VigieDayForecast& day, char* buf, size_t size);
+
+// ─── Sea texts (activities of a surf spot, see vigie_sea.h) ─────────────────
+// "Surf", "Kite / wing", "Boat", "Shore fishing"; "" for COUNT_.
+const char* vigie_activity_name(VigieActivity activity);
+// "Good", "Possible", "Not advised"; "" when unknown.
+const char* vigie_verdict_label(VigieVerdict verdict);
+// "Swell", "Wind", "Tide"…; "" when unknown.
+const char* vigie_criterion_label(VigieCriterionId criterion);
+// What a rule made of a value: "too small", "offshore", "a bit light"…; "" for a pair the
+// contract does not list (the screen then shows nothing, it does not guess).
+const char* vigie_criterion_state_text(VigieCriterionId criterion, VigieCriterionState state);
+// Value with its unit: "2.6 m", "10 s", "21°", "19 km/h", "11.9 kn", "Force 3", "102 min", "91".
+// False when the value or the unit is unknown.
+bool vigie_format_criterion_value(const VigieCriterion& criterion, char* buf, size_t size);
+// Why an activity is not good: "Swell: too small", "Coastal warning: red"; false when unknown.
+bool vigie_format_reason(const VigieActivityForecast& activity, char* buf, size_t size);
+// "14:00–16:00" at `offset_s` from UTC; false when there is no slot.
+bool vigie_format_slot(uint32_t start_utc, uint32_t end_utc, int32_t offset_s, char* buf, size_t size);
+// "High water 14:12 · 1.9 m" ("High water 14:12" when the height is unknown); false without a time.
+bool vigie_format_tide_extreme(const VigieTideExtreme& extreme, int32_t offset_s, char* buf, size_t size);
+// "Coefficient 91 (estimated)": the number is Vigie's estimate, not the SHOM's.
+bool vigie_format_tide_coefficient(const VigieTideCoefficient& coefficient, char* buf, size_t size);
+// The strongest coastal warning: "Orange coastal warning · until 14:00". When they could not be
+// read: "Coastal warnings unavailable". False (nothing to say) when none stands.
+bool vigie_format_warning(const VigieSea& sea, int32_t offset_s, char* buf, size_t size);
+// Line about the age of the sea data (from vigie_sea_freshness()): "" and false when fresh.
+bool vigie_format_sea_status(const VigieSea& sea, VigieSeaFreshness freshness, uint32_t now_utc, char* buf, size_t size);
+
