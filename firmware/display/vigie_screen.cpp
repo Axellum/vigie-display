@@ -1213,7 +1213,7 @@ void vigie_screen_build(const VigieScreenFonts& f, esphome::image::Image* world_
     for (int j = 0; j < 2; ++j) {
         s.tide_next[j] = label(s.tide_panel, f.small, kTextDim, kSeaCardPad + j * next_w, kSeaBottomH - sc(30), next_w);
     }
-    const int badge_w = sc(170);
+    const int badge_w = sc(210);  // "Coefficient 83 (estimated)" is the longest of the two languages
     s.tide_badge = box(s.tide_panel, kSeaTideW - kSeaCardPad - badge_w, sc(8), badge_w, sc(26), kAccent, LV_RADIUS_CIRCLE);
     s.tide_badge_text = label(s.tide_badge, f.small, kBackground, 0, sc(2), badge_w, LV_TEXT_ALIGN_CENTER);
     s.tide_empty = label(s.tide_panel, f.body, kTextDim, kSeaCardPad, kTideCurveY + kTideCurveH / 2 - sc(10),
