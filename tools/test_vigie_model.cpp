@@ -153,6 +153,50 @@ void test_unknown_fields() {
     CHECK(std::fabs(s.kp - 2.0f) < 0.01f);
 }
 
+// "<body>END|<CRC32>\n" in `out`.
+void sign_frame(const char* body, char* out, size_t out_size) {
+    std::snprintf(out, out_size, "%sEND|%08X\n", body, static_cast<unsigned>(vigie_crc32(body, std::strlen(body))));
+}
+
+// The lines of the activities block of vigie-api (SEA, ACT, CRIT) and any tag added later are
+// skipped: the world decoded from a signed frame is the same with and without them, wherever
+// they stand in the frame. (The lines below only have the right tags; the real ones are in
+// tests/fixtures/api_frame_activities.txt, decoded by test_vigie_api_client.cpp.)
+void test_unknown_lines_are_skipped() {
+    const char* extra_after =
+        "SEA|Plage Sud|Soorts-Hossegor|1792332100|1792330000|0|12.0|25.0|1792320000|1792356000|1792406000|1792442000|"
+        "L:1792326000:-1.66,H:1792349000:1.71|68,70|1792332100||YELLOW|1792400000|NOAA_NWS||\n"
+        "ACT|surf|1|poor|swell_height.too_small|||XXXXXXXXXXXXXXXXXXXXXXXX|111111100000000000000111|1792330000|4|8\n"
+        "CRIT|surf|swell_height|0.4|m|too_small|poor|0|2\n"
+        "CRIT|surf|tide|-1.2|m||||2\n"
+        "FUTURE|a||b\n";
+    char plain[1024], with_extra[2048], body[2048];
+    sign_frame(kPartialFrame, plain, sizeof(plain));
+    // One unknown line right after HEAD, the block just before END.
+    const char* first_line_end = std::strchr(kPartialFrame, '\n') + 1;
+    std::snprintf(body, sizeof(body), "%.*sFUTURE|early|line\n%s%s", static_cast<int>(first_line_end - kPartialFrame),
+                  kPartialFrame, first_line_end, extra_after);
+    sign_frame(body, with_extra, sizeof(with_extra));
+    CHECK(vigie_frame_crc_ok(plain) && vigie_frame_crc_ok(with_extra));
+
+    VigieWorldState a{}, b{};
+    CHECK(vigie_decode_frame(plain, a));
+    CHECK(vigie_decode_frame(with_extra, b));
+    CHECK(a.zone_count == 2 && b.zone_count == a.zone_count && b.hazard_count == a.hazard_count);
+    CHECK(b.hazards_known == a.hazards_known && b.red_count == a.red_count && b.orange_count == a.orange_count);
+    CHECK(b.updated_utc == a.updated_utc && b.zones[0].day_count == a.zones[0].day_count);
+    CHECK_STR(b.zones[0].id, a.zones[0].id);
+    CHECK_STR(b.hazards[0].id, a.hazards[0].id);
+    CHECK(std::fabs(b.zones[0].temp_c - a.zones[0].temp_c) < 0.001f);
+    CHECK(b.zones[1].is_mobile_gps && !b.zones[1].has_weather);
+
+    // Same on a frame that has only HEAD (no hazard source answered).
+    std::snprintf(body, sizeof(body), "%s%s", kNoHazardSource, "ACT|surf|1|good\n");
+    sign_frame(body, with_extra, sizeof(with_extra));
+    VigieWorldState c{};
+    CHECK(vigie_decode_frame(with_extra, c) && !c.hazards_known && c.zone_count == 0);
+}
+
 void test_zones_nvs_alarm() {
     VigieWorldState s{};
     CHECK(vigie_decode_frame(kFrame, s));
@@ -200,6 +244,7 @@ int main() {
     test_nmea();
     test_frame_decoding();
     test_unknown_fields();
+    test_unknown_lines_are_skipped();
     test_zones_nvs_alarm();
     return test_report("vigie_model");
 }

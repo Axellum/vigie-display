@@ -90,7 +90,11 @@ When the frame contract changes in vigie-api, capture a new real frame from that
 python tools/capture_frame.py <path to this repo>/tests/fixtures/api_frame.txt
 ```
 
-then run the tests here.
+then run the tests here. The second fixture, `tests/fixtures/api_frame_activities.txt`, is a frame
+with the activities block of a surf spot (`SEA`, `ACT`, `CRIT`). Capture it the same way, with a
+spot of `GET /v1/surf/spots` and a position: `--device-type tab5 --lat <lat> --lon <lon> --marine
+--spot <spot id>` (all of them are options of `capture_frame.py`). The files are compared byte
+for byte, with their LF line endings (`.gitattributes`).
 
 ## CI
 

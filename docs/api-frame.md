@@ -21,6 +21,26 @@ source (every line type, every column, units). This page only says how the displ
   `HEAD` field 3 is reserved and is not read.
 - `DAY` labels are ISO dates (`2026-10-20`); the display turns them into day names in its language.
 - At most 10 zones and 30 hazards are kept (`kVigieMaxZones`, `kVigieMaxHazards`), most severe first.
+- A line whose tag the display does not know is skipped, and the CRC still covers it. This is how
+  vigie-api can add lines without breaking a display that is not updated yet.
 
-`tests/fixtures/api_frame.txt` is a real frame captured from vigie-api (its `tools/capture_frame.py`);
-`tools/test_vigie_api_client.cpp` decodes it. Refresh it when the contract changes.
+## Lines the display does not read yet
+
+For a request with `&spot=<id>` (a surf spot), vigie-api adds `SEA`, `ACT` and `CRIT` lines after
+the `HAZ` lines: the sea of the spot (tides, sun, the strongest warning) and, for each activity
+(surf, kite, boat, shore fishing), a verdict, its 24 hourly marks and the criteria behind it. Their
+columns are in vigie-api's `docs/embedded-frame.md`. **This firmware does not ask for a spot and
+does not read these lines**: it skips them and decodes the rest exactly as before. The screen that
+shows them is built on top of this.
+
+## Fixtures
+
+- `tests/fixtures/api_frame.txt` is a real frame captured from vigie-api (its `tools/capture_frame.py`);
+  `tools/test_vigie_api_client.cpp` decodes it.
+- `tests/fixtures/api_frame_activities.txt` is a real frame with the block above, captured for a
+  surf spot of the Landes coast. `tools/test_vigie_api_client.cpp` checks that the display accepts
+  it, that removing the block and signing the frame again gives the same decoded world, and that
+  altering a byte of the block is still refused by the CRC. `tools/test_vigie_model.cpp` checks the
+  same with small frames and an unknown tag.
+
+Refresh both when the contract changes (`docs/development.md`).
