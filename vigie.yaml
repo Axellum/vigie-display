@@ -18,6 +18,9 @@ substitutions:
   vigie_api_url: http://vigie-api.local:8080
   vigie_api_interval: 60s
   vigie_api_max_bytes: "32768"
+  # Surf spot whose sea the second page shows (its id in the API, e.g. "hossegor-sud"); empty: no sea page.
+  # An id the API does not know is given up after its first refusal, so that the weather keeps coming.
+  vigie_spot: ""
   # RSA 3072 key that signs the firmware (never in git; *.pem is ignored).
   vigie_signing_key: vigie_signing_key.pem
 
@@ -39,6 +42,7 @@ esphome:
 packages:
   board: !include firmware/packages/board-${vigie_board}.yaml
   screen: !include firmware/packages/vigie-screen.yaml
+  repaint: !include firmware/packages/vigie-repaint.yaml
   api_client: !include firmware/packages/vigie-api-client.yaml
 
 # No credentials here: they are given after flashing (Improv over USB, or the fallback

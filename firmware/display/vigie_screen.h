@@ -7,6 +7,14 @@
  * hazards (dot colour = severity) and the watched zones; the five most severe alerts
  * under the map; on the right, the weather of the active zone. Touching the weather panel
  * shows the next zone (distances are then measured from it).
+ *
+ * Second page, the sea (once a frame has carried the sea of a spot, g_vigie_sea): can I go today?
+ * One card per activity (surf, kite, boat, shore fishing) with its verdict, the reason, the best
+ * slot, 24 hourly bars and the main criteria; the tide, the sun, the coastal warning on a banner.
+ * Touching a card opens the criteria behind its verdict. A pill in the title bar, or a swipe
+ * left / right, goes from one page to the other. With no sea, or a sea too old to be trusted, no
+ * verdict is drawn: the page says so.
+ *
  * Every text comes from firmware/core/vigie_text.* (English or French). Writes compare
  * first: an unchanged text or colour does not invalidate anything.
  */
@@ -42,3 +50,11 @@ void vigie_screen_build(const VigieScreenFonts& fonts, esphome::image::Image* wo
 
 // Repaints what changed. `utc` = current time (0 if unknown), `now_ms` = millis().
 void vigie_screen_paint(const VigieWorldState& state, const VigieLinkStatus& link, uint32_t now_ms, uint32_t utc);
+
+enum class VigieScreenPage : uint8_t { WORLD = 0, SEA = 1 };
+
+// What a touch does, for the CI renders (the touch itself is not exercised there). The sea page is
+// not shown without a sea; the detail only opens for an activity that has a verdict and criteria.
+// Call after vigie_screen_paint().
+void vigie_screen_show_page(VigieScreenPage page);
+void vigie_screen_open_detail(int activity);  // VigieActivity as an int

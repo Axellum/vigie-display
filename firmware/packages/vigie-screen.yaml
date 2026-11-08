@@ -66,8 +66,14 @@ font:
     bpp: 4
     glyphs:
       - "\U000F01E7" # earth (status bar)
-      - "\U000F0142" # chevron-right (weather panel)
-      - "\U000F0026" # alert (unknown hazard type)
+      - "\U000F0142" # chevron-right (weather panel, page switch)
+      - "\U000F0141" # chevron-left (page switch)
+      - "\U000F0156" # close (detail popup)
+      - "\U000F078D" # waves (surf)
+      - "\U000F1744" # kitesurfing
+      - "\U000F0EC8" # sail-boat
+      - "\U000F1417" # pail (shore fishing)
+      - "\U000F0026" # alert (unknown hazard type, sea banner)
       - "\U000F0430" # pulse (earthquake)
       - "\U000F1A81" # tsunami
       - "\U000F1A83" # volcano
@@ -130,7 +136,7 @@ lvgl:
       bg_color: 0x0B1016
       scrollable: false
       # ESPHome compiles an LVGL widget type only if the YAML uses it. The screen is built in
-      # C++ (labels, images): these two hidden objects keep both types in the build.
+      # C++ (labels, images, lines): these three hidden objects keep the three types in the build.
       widgets:
         - label:
             id: lvgl_keeps_labels
@@ -140,12 +146,9 @@ lvgl:
             id: lvgl_keeps_images
             hidden: true
             src: world_map
-
-interval:
-  # Status line ("12 s ago") and clock.
-  - interval: 1s
-    then:
-      - lambda: |-
-          const uint32_t now = millis();
-          const uint32_t clock = id(sntp_time).now().is_valid() ? id(sntp_time).now().timestamp : 0;
-          vigie_screen_paint(g_vigie_state, g_vigie_link, now, vigie_current_utc(clock, g_vigie_state, g_vigie_link, now));
+        - line:
+            id: lvgl_keeps_lines
+            hidden: true
+            points:
+              - 0, 0
+              - 1, 1

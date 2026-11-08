@@ -7,15 +7,29 @@ All notable changes to this project are documented here. Format:
 
 ### Added
 
+- The sea page, a second page of the screen (ADR 0004), for the surf spot of the new `vigie_spot`
+  substitution (empty by default: no sea page). For surf, kite, boat and shore fishing: a verdict, why
+  it is not good, the best slot, one bar per hour of the next 24 (night dark, a white line for now) and
+  the main criteria; a banner for the coastal warning or for what is wrong with the data; the tide
+  curve with the next high and low waters and the estimated coefficient; the sun. Touch an activity for
+  the criteria behind its verdict. A pill in the title bar, or a swipe left or right, changes page.
+  Data some minutes old is dimmed with its age; data too old, or none, shows no verdict; a coastal
+  warning that could not be read is never shown as an all-clear. A spot the API refuses is given up, so
+  the weather keeps coming. Built for both boards from the same numbers (`sc()`); **not tried on a
+  board yet**: CI compiles and renders it, touch and swipe are untested.
+- CI renders the sea page for both boards and both languages: normal, the detail of surf and of kite,
+  a coastal warning, data some minutes old and data too old (one build per board, the picture is chosen
+  by `VIGIE_RENDER_*` environment variables, `docs/development.md`), with a third fixture, the
+  activities frame plus an orange coastal warning.
 - The core reads the sea of a surf spot (`firmware/core/vigie_sea.*`): the `SEA`, `ACT` and `CRIT` lines of
   the frame, for surf, kite, boat and shore fishing: a verdict per hour for 24 hours, the best slot, the
   criteria behind it, the tide, the sun, the strongest coastal warning, and how old it is. Unknown stays
   unknown: a frame without the block, or warnings that could not be read, are never shown as "nothing to
   fear". Its sentences are in English and French (`vigie_text.*`), and the frame URL can ask for a spot
-  (`&spot=<id>`). Nothing asks for a spot or draws the sea yet.
+  (`&spot=<id>`).
 - A second API frame fixture, with the `SEA`, `ACT` and `CRIT` lines vigie-api now adds for a surf
   spot, and tests that the display accepts such a frame, skips those lines and decodes the rest
-  exactly as before. The firmware does not ask for a spot and does not read them yet.
+  exactly as before.
 - The Vigie logo, an eye with an orange iris, as the project page's icon (`site/favicon.svg`) and at the top
   of the README, the same as the website's.
 - M5Stack Tab5 (1280×720, `-s vigie_board tab5`): board package taken from the

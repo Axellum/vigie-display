@@ -63,6 +63,24 @@ CI does the same for every board and language with a live frame of the public AP
 `docs/images/` and of the site come from there. With the fixture, ages read as days: its
 hazards are as old as the capture.
 
+What the program draws is read from its environment, so that one build gives every picture:
+
+| Variable | Meaning |
+| :--- | :--- |
+| `VIGIE_RENDER_FRAME` | Frame to show (default: the `vigie_frame` substitution) |
+| `VIGIE_RENDER_CLOCK` | UTC epoch seconds to use instead of the machine's clock |
+| `VIGIE_RENDER_PAGE` | `sea` for the sea page (default: the world page) |
+| `VIGIE_RENDER_DETAIL` | Activity whose detail is open: 0 surf, 1 kite, 2 boat, 3 shore fishing |
+| `VIGIE_RENDER_SUFFIX` | Added to the picture's name, before `.bmp` |
+
+The sea of a fixture is a fixed day (generated at 1794133609): its freshness is judged against
+`VIGIE_RENDER_CLOCK`, which `render.yml` sets 2 minutes (fresh), 20 minutes (some minutes old) and
+about 6 hours (too old) after it. The sea page is drawn from `tests/fixtures/api_frame_activities.txt`
+and, for the banner, `api_frame_activities_warning.txt`. The pictures are named
+`vigie-<board>-<language>[-world-with-sea|-sea|-sea-detail-surf|-sea-detail-kite|-sea-warning|-sea-stale|-sea-expired].png`.
+Touch and swipe are not exercised: the render calls `vigie_screen_show_page()` and
+`vigie_screen_open_detail()`, which a touch calls too.
+
 ## Firmware
 
 ESPHome 2026.9.1 or newer. On Windows, run ESPHome from PowerShell (not Git Bash).

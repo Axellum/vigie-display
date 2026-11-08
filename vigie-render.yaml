@@ -38,9 +38,18 @@ esphome:
     - priority: -200
       then:
         - lambda: |-
+            // What to draw is read from the environment, so that one build gives every picture of a board:
+            //   VIGIE_RENDER_FRAME   frame to show (default: the vigie_frame substitution)
+            //   VIGIE_RENDER_CLOCK   UTC epoch seconds to use instead of the machine's clock (the sea of a
+            //                        fixture is a fixed day: its freshness is judged against this)
+            //   VIGIE_RENDER_PAGE    "sea" for the sea page (default: the world page)
+            //   VIGIE_RENDER_DETAIL  activity (0 surf, 1 kite, 2 boat, 3 shore fishing) whose detail is open
+            //   VIGIE_RENDER_SUFFIX  added to the name of the picture, before ".bmp"
+            const char* frame_path = std::getenv("VIGIE_RENDER_FRAME");
+            if (frame_path == nullptr || frame_path[0] == '\0') frame_path = "${vigie_frame}";
             static char body[${vigie_api_max_bytes}];
             size_t size = 0;
-            FILE* f = std::fopen("${vigie_frame}", "rb");
+            FILE* f = std::fopen(frame_path, "rb");
             if (f != nullptr) {
               size = std::fread(body, 1, sizeof(body), f);
               std::fclose(f);
@@ -48,18 +57,35 @@ esphome:
             VigieAlarmDecision alarm;
             const uint32_t now = millis();
             if (!vigie_receive_http_response(f != nullptr ? 200 : 404, body, size, sizeof(body), g_vigie_state,
-                                             g_vigie_link, now, alarm)) {
-              ESP_LOGE("vigie.render", "Frame refused: %s (%u bytes)", "${vigie_frame}", (unsigned) size);
+                                             g_vigie_link, now, alarm, &g_vigie_sea)) {
+              ESP_LOGE("vigie.render", "Frame refused: %s (%u bytes)", frame_path, (unsigned) size);
               std::exit(2);
             }
-            ESP_LOGI("vigie.render", "Frame: %u zones, %u hazards", (unsigned) g_vigie_state.zone_count,
-                     (unsigned) g_vigie_state.hazard_count);
-            const uint32_t clock = id(sntp_time).now().is_valid() ? id(sntp_time).now().timestamp : 0;
-            vigie_screen_paint(g_vigie_state, g_vigie_link, now, vigie_current_utc(clock, g_vigie_state, g_vigie_link, now));
+            ESP_LOGI("vigie.render", "Frame: %u zones, %u hazards, sea %s", (unsigned) g_vigie_state.zone_count,
+                     (unsigned) g_vigie_state.hazard_count, g_vigie_sea.valid ? "yes" : "no");
+            const char* fixed_clock = std::getenv("VIGIE_RENDER_CLOCK");
+            uint32_t utc = fixed_clock != nullptr ? (uint32_t) std::strtoul(fixed_clock, nullptr, 10) : 0;
+            if (utc == 0) {
+              const uint32_t clock = id(sntp_time).now().is_valid() ? id(sntp_time).now().timestamp : 0;
+              utc = vigie_current_utc(clock, g_vigie_state, g_vigie_link, now);
+            }
+            vigie_screen_paint(g_vigie_state, g_vigie_link, now, utc);
+            const char* page = std::getenv("VIGIE_RENDER_PAGE");
+            if (page != nullptr && std::strcmp(page, "sea") == 0) {
+              vigie_screen_show_page(VigieScreenPage::SEA);
+              if (!g_vigie_sea.valid) {
+                ESP_LOGE("vigie.render", "The sea page was asked for, but the frame carries no sea");
+                std::exit(3);
+              }
+            }
+            const char* detail = std::getenv("VIGIE_RENDER_DETAIL");
+            if (detail != nullptr && detail[0] != '\0') vigie_screen_open_detail((int) std::strtol(detail, nullptr, 10));
         - delay: ${vigie_render_delay}
         - snapshot.take:
             id: panel
-            filename: vigie-${vigie_board}-${vigie_language}.bmp
+            filename: !lambda |-
+              const char* suffix = std::getenv("VIGIE_RENDER_SUFFIX");
+              return std::string("vigie-${vigie_board}-${vigie_language}") + (suffix != nullptr ? suffix : "") + ".bmp";
         - lambda: "std::exit(0);"
 
 host:

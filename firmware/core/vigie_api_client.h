@@ -29,6 +29,9 @@ struct VigieLinkStatus {
     uint32_t last_success_ms = 0;
     uint32_t success_count = 0;
     uint32_t failure_count = 0;
+    // The API answered 404 or 422 to a request that carried a spot: it does not know it (or the wind
+    // range). The display stops asking for it until the next boot, so that the world keeps coming.
+    bool spot_refused = false;
 };
 
 enum class VigieLinkState : uint8_t {
@@ -44,6 +47,15 @@ enum class VigieLinkState : uint8_t {
 bool vigie_build_frame_url(const char* base_url, const char* device_type, const VigieGpsFix& gps, char* buf,
                            size_t size, const char* spot_id = nullptr);
 
+// The spot to put in the request: `configured` (a substitution, may be empty) unless the API already
+// refused it, nullptr then. An id that is not a slug is not asked for either (vigie_spot_id_valid()).
+const char* vigie_spot_to_ask(const VigieLinkStatus& status, const char* configured);
+
+// To call with the HTTP status of each request. `spot_asked`: the request carried a spot. A 404 or
+// a 422 then means the API does not know the spot: the frame is refused (the world stops with it),
+// so the next requests go without the spot and the world comes back; a warning is the log's job.
+void vigie_note_spot_status(VigieLinkStatus& status, int http_status, bool spot_asked);
+
 VigieLinkState vigie_link_state(const VigieLinkStatus& status, uint32_t now_ms);
 
 // Status bar sentence: "Waiting for the API", "Up to date · 12 s ago",
@@ -57,10 +69,11 @@ bool vigie_frame_complete(const char* frame);
 // Firmware path. Refuses the response (failure counted, `state` untouched) when the status
 // is not 200, when it filled the buffer (`size >= max_size`: maybe cut), when it is not
 // complete or its CRC is wrong. Otherwise decodes it, keeps the active zone (same id) and
-// evaluates the alarm.
+// evaluates the alarm. With `sea`, a good frame that carries the sea block replaces it
+// (vigie_update_sea(): a frame without the block keeps the previous sea).
 bool vigie_receive_http_response(int http_status, const char* body, size_t size, size_t max_size,
                                  VigieWorldState& state, VigieLinkStatus& status, uint32_t now_ms,
-                                 VigieAlarmDecision& alarm);
+                                 VigieAlarmDecision& alarm, VigieSea* sea = nullptr);
 
 // Request failed (network, timeout): the link goes down.
 void vigie_report_failure(VigieLinkStatus& status);

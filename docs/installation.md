@@ -89,6 +89,7 @@ Tab5 with an **ST7121**: add `-s board_tab5_panel M5STACK-TAB5-ST7121`. With an 
 | `vigie_api_url` | `http://vigie-api.local:8080` | base URL of vigie-api, without `/v1` |
 | `vigie_language` | `en` | screen language: `en` or `fr` |
 | `vigie_api_interval` | `60s` | refresh period |
+| `vigie_spot` | empty | surf spot of the sea page (its id in vigie-api, e.g. from `/v1/surf/spots`); empty: no sea page |
 | `vigie_signing_key` | `vigie_signing_key.pem` | path of the signing key |
 | `vigie_version` | `0.1.0-dev` | version written in the firmware |
 | `board_rotation` | `0` (7B), `270` (Tab5) | a 7B mounted the other way up: `180` |

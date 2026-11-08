@@ -20,7 +20,9 @@ Off-device render (Linux/macOS, or CI `render.yml`): `docs/development.md`, "Ren
    test in `tools/test_*.cpp`. The LVGL layer (`firmware/display/vigie_screen.cpp`) only places
    texts computed by the core.
 2. Every on-screen text goes through `firmware/core/vigie_text.*`, in English and French.
-3. Never display an invented value: unknown is hidden or shown as unknown.
+3. Never display an invented value: unknown is hidden or shown as unknown. On the sea page no
+   verdict is drawn without data fresh enough, and an unreadable coastal warning is never an
+   all-clear (ADR 0004).
 4. Every MDI icon drawn must be in its font's `glyphs:` (`firmware/packages/vigie-screen.yaml`).
 5. Local includes are flat (`#include "vigie_model.h"`) and every C++ file is listed in an `includes:`.
 6. The frame contract belongs to vigie-api (`docs/embedded-frame.md` there); refresh

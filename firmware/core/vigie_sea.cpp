@@ -419,6 +419,32 @@ int vigie_sea_next_tide(const VigieSea& sea, uint32_t now_utc) {
     return -1;
 }
 
+bool vigie_tide_height_at(const VigieSea& sea, uint32_t utc, float& metres) {
+    const int count = sea.tide_count < kVigieMaxTideExtremes ? sea.tide_count : kVigieMaxTideExtremes;
+    for (int i = 0; i + 1 < count; ++i) {
+        const VigieTideExtreme& a = sea.tide[i];
+        const VigieTideExtreme& b = sea.tide[i + 1];
+        if (a.utc == 0 || b.utc <= a.utc) return false;  // not in time order: do not draw
+        if (utc < a.utc || utc > b.utc) continue;
+        if (!std::isfinite(a.height_m) || !std::isfinite(b.height_m)) return false;
+        const double t = static_cast<double>(utc - a.utc) / static_cast<double>(b.utc - a.utc);
+        const double mix = (1.0 - std::cos(3.14159265358979323846 * t)) / 2.0;
+        metres = static_cast<float>(a.height_m + (b.height_m - a.height_m) * mix);
+        return true;
+    }
+    return false;
+}
+
+int vigie_sea_coefficient_for(const VigieSea& sea, uint32_t now_utc) {
+    const int count = sea.coefficient_count < kVigieMaxTideCoefficients ? sea.coefficient_count : kVigieMaxTideCoefficients;
+    for (int i = 0; i < count; ++i) {
+        if (sea.coefficients[i].value != 0 && sea.coefficients[i].high_water_utc >= now_utc) return i;
+    }
+    return -1;
+}
+
+VigieSea g_vigie_sea{};
+
 bool vigie_spot_id_valid(const char* spot_id) {
     if (spot_id == nullptr) return false;
     const size_t len = std::strlen(spot_id);

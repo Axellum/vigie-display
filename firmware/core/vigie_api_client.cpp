@@ -55,6 +55,15 @@ bool vigie_build_frame_url(const char* base_url, const char* device_type, const 
     return true;
 }
 
+const char* vigie_spot_to_ask(const VigieLinkStatus& status, const char* configured) {
+    if (status.spot_refused || !vigie_spot_id_valid(configured)) return nullptr;
+    return configured;
+}
+
+void vigie_note_spot_status(VigieLinkStatus& status, int http_status, bool spot_asked) {
+    if (spot_asked && (http_status == 404 || http_status == 422)) status.spot_refused = true;
+}
+
 VigieLinkState vigie_link_state(const VigieLinkStatus& status, uint32_t now_ms) {
     if (status.success_count == 0 && !status.from_cache_only) {
         return status.failure_count == 0 ? VigieLinkState::WAITING : VigieLinkState::DOWN;
@@ -117,7 +126,7 @@ uint32_t vigie_current_utc(uint32_t clock_utc, const VigieWorldState& state, con
 
 bool vigie_receive_http_response(int http_status, const char* body, size_t size, size_t max_size,
                                  VigieWorldState& state, VigieLinkStatus& status, uint32_t now_ms,
-                                 VigieAlarmDecision& alarm) {
+                                 VigieAlarmDecision& alarm, VigieSea* sea) {
     alarm = VigieAlarmDecision{};
     if (http_status != 200 || body == nullptr || size == 0 || size >= max_size || !vigie_frame_complete(body)) {
         vigie_report_failure(status);
@@ -151,5 +160,6 @@ bool vigie_receive_http_response(int http_status, const char* body, size_t size,
     status.last_success_ms = now_ms;
     ++status.success_count;
     alarm = vigie_evaluate_alarm(state);
+    if (sea != nullptr) vigie_update_sea(body, *sea);  // NO_BLOCK keeps the previous sea: it grows older
     return true;
 }

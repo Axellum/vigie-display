@@ -30,6 +30,9 @@ FIRMWARE = REPO / "firmware"
 CORE = FIRMWARE / "core"
 FIXTURE = REPO / "tests" / "fixtures" / "api_frame.txt"
 FIXTURE_ACTIVITIES = REPO / "tests" / "fixtures" / "api_frame_activities.txt"
+# The same frame with an orange coastal warning on its SEA line, for the CI render of the banner. Its
+# activities are those of the plain frame, not what the API would answer under a warning: display test only.
+FIXTURE_WARNING = REPO / "tests" / "fixtures" / "api_frame_activities_warning.txt"
 YAML_FILES = [REPO / "vigie.yaml", REPO / "vigie-render.yaml", *sorted((FIRMWARE / "packages").glob("*.yaml"))]
 CPP_FILES = sorted(FIRMWARE.rglob("*.cpp")) + sorted(FIRMWARE.rglob("*.h"))
 
@@ -165,7 +168,7 @@ def test_world_map_up_to_date():
     assert result.returncode == 0, result.stdout + result.stderr
 
 
-@pytest.mark.parametrize("fixture", [FIXTURE, FIXTURE_ACTIVITIES], ids=lambda path: path.name)
+@pytest.mark.parametrize("fixture", [FIXTURE, FIXTURE_ACTIVITIES, FIXTURE_WARNING], ids=lambda path: path.name)
 def test_fixture_is_a_signed_frame(fixture):
     data = fixture.read_bytes()
     body, _, trailer = data.rpartition(b"END|")
@@ -183,6 +186,17 @@ def test_activities_fixture_has_the_activities_block():
     assert tags[-1] == "END"
     plain = [line.split("|", 1)[0] for line in FIXTURE.read_text(encoding="utf-8").splitlines()]
     assert not {"SEA", "ACT", "CRIT"} & set(plain), "api_frame.txt stays a frame without the block: both must decode"
+
+
+def test_warning_fixture_only_adds_the_warning():
+    """The warning frame is the activities frame with the warning fields of the SEA line filled, nothing else."""
+    plain = FIXTURE_ACTIVITIES.read_text(encoding="utf-8").splitlines()
+    warned = FIXTURE_WARNING.read_text(encoding="utf-8").splitlines()
+    assert len(plain) == len(warned)
+    differing = [(a, b) for a, b in zip(plain, warned) if a != b]
+    assert [a.split("|", 1)[0] for a, _ in differing] == ["SEA", "END"]
+    sea_plain, sea_warned = differing[0]
+    assert sea_plain.endswith("|ok|||") and sea_warned == sea_plain[: -len("|||")] + "|ORANGE|1794160800|Meteo-France"
 
 
 def cxx_command() -> list[str] | None:
@@ -225,6 +239,6 @@ def test_cpp(name, tmp_path):
            f"tools/{name}.cpp", *CPP_TESTS[name], "-o", str(exe)]
     build = subprocess.run(cmd, cwd=REPO, capture_output=True, text=True)
     assert build.returncode == 0, build.stderr[-4000:]
-    run = subprocess.run([str(exe), str(FIXTURE), str(FIXTURE_ACTIVITIES)], cwd=REPO, capture_output=True, text=True, encoding="utf-8", errors="replace")
+    run = subprocess.run([str(exe), str(FIXTURE), str(FIXTURE_ACTIVITIES), str(FIXTURE_WARNING)], cwd=REPO, capture_output=True, text=True, encoding="utf-8", errors="replace")
     assert run.returncode == 0, run.stdout[-4000:]
     assert run.stdout.strip().startswith("OK:"), run.stdout

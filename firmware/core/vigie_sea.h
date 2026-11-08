@@ -209,3 +209,15 @@ int vigie_sea_best_activity(const VigieSea& sea);
 int vigie_sea_next_tide(const VigieSea& sea, uint32_t now_utc);
 // Is `spot_id` usable in the request (a slug: a-z, 0-9, '-', '_'; at most 64 characters)?
 bool vigie_spot_id_valid(const char* spot_id);
+
+// Height of the water at `utc` (metres): a half cosine between the high and low waters on either side
+// of it, which is how a tide is drawn when only its extremes are known. False, `metres` untouched,
+// outside the first and the last extreme or when one of the two heights is unknown: nothing is
+// guessed beyond what the frame says. The extremes must be in time order, as the API sends them.
+bool vigie_tide_height_at(const VigieSea& sea, uint32_t utc, float& metres);
+// Index in `sea.coefficients` of the first coefficient whose high water is at or after `now_utc`
+// (the one of the next high water), -1 when none.
+int vigie_sea_coefficient_for(const VigieSea& sea, uint32_t now_utc);
+
+// The sea the screen shows, replaced by vigie_update_sea() with each good frame.
+extern VigieSea g_vigie_sea;

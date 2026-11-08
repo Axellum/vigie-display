@@ -21,9 +21,9 @@ P4 decodes without allocating memory. Contract: [api-frame.md](api-frame.md).
 | | `firmware/core/vigie_sea.*` — the sea of a surf spot from the frame's `SEA` / `ACT` / `CRIT` lines: verdicts per activity and hour, criteria, tide, sun, coastal warning, freshness | core | `tools/test_vigie_sea.cpp` (real frame fixture) |
 | | `firmware/core/vigie_text.*` — every on-screen text (English, French), numbers, dates, map projection, icons, the sea's sentences | core | `tools/test_vigie_text.cpp` |
 | | `firmware/core/vigie_api_client.*` — URL, HTTP response checks, link state | core | `tools/test_vigie_api_client.cpp` (real frame fixture) |
-| Display | `firmware/display/vigie_screen.*` — the LVGL screen, built once in C++, repainted with compare-first writes; layout drawn for 1024×600 and scaled per board | core, LVGL, ESPHome fonts/images | compiled by ESPHome; rendered off the device (`vigie-render.yaml`) |
+| Display | `firmware/display/vigie_screen.*` — the LVGL screen (the world page and the sea page, ADR 0004), built once in C++, repainted with compare-first writes; layout drawn for 1024×600 and scaled per board | core, LVGL, ESPHome fonts/images | compiled by ESPHome; rendered off the device (`vigie-render.yaml`) |
 | | `firmware/display/panel_power.*`, `c6_link.*`, `board_7b_version.h` — board helpers | ESP-IDF, ESPHome | compiled; tested on the boards in the Tab5 project |
-| Packages | `firmware/packages/*.yaml` — boards (`board-<board>`: hardware) and their geometry (`layout-<board>`: screen, panel, rotation, map, fonts), screen (fonts, image, LVGL, 1 s repaint), API client (HTTP every `vigie_api_interval`) | ESPHome | `esphome compile` of every board in CI |
+| Packages | `firmware/packages/*.yaml` — boards (`board-<board>`: hardware) and their geometry (`layout-<board>`: screen, panel, rotation, map, fonts), screen (fonts, image, LVGL), repaint (every second), API client (HTTP every `vigie_api_interval`) | ESPHome | `esphome compile` of every board in CI |
 
 `tests/test_firmware.py` keeps these boundaries: core files include only the standard library
 and each other, every C++ file is listed in an `includes:`, every MDI icon is in a font, and the

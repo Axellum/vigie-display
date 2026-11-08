@@ -46,6 +46,12 @@ left out, never invented.
 Screenshots rendered from the firmware itself by CI (`vigie-render.yaml`), with a live frame of
 the public API. Notes on the boards: [docs/hardware.md](docs/hardware.md).
 
+With a surf spot (`vigie_spot`) the screen has a second page, the sea: for surf, kite, boat and
+shore fishing, a verdict, the best slot and the hours of the next 24, the tide, the sun and the
+coastal warning. Touch the pill of the title bar or swipe to change page; touch an activity for the
+criteria behind its verdict. The verdicts are Vigie's own rules, not official ones and not for
+safety ([ADR 0004](docs/decisions/0004-sea-page.md)).
+
 ## Install
 
 Step by step, from a bare board: **[docs/installation.md](docs/installation.md)**. In short, with
@@ -62,6 +68,7 @@ esphome -s vigie_board tab5 -s vigie_api_url https://vigie.auxfilsdesidees.fr -s
 | `vigie_api_url` | `http://vigie-api.local:8080` | Base URL of vigie-api: the public one, `https://vigie.auxfilsdesidees.fr`, or your own |
 | `vigie_api_interval` | `60s` | Refresh period |
 | `vigie_language` | `en` | Screen language: `en` or `fr` |
+| `vigie_spot` | empty | Surf spot of the sea page (its id in vigie-api); empty: no sea page |
 | `vigie_signing_key` | `vigie_signing_key.pem` | Firmware signing key |
 | `vigie_version` | `0.1.0-dev` | Firmware version (the release tag) |
 | `board_tab5_panel`, `board_tab5_touch`, `board_tab5_touch_interval` | ST7123 | Tab5 revision ([hardware](docs/hardware.md#revisions)) |
@@ -78,7 +85,7 @@ Wi-Fi credentials are not in the configuration: give them after the first flash 
 | `vigie-render.yaml` | The same screen built for ESPHome's `host` platform: screenshots without a board |
 | `firmware/core/` | Pure C++ (no ESPHome, no LVGL), tested on a PC: world state, frame decoding, texts and formatting, API client logic |
 | `firmware/display/` | LVGL screen and board helpers (panel power, C6 Wi-Fi link) |
-| `firmware/packages/` | ESPHome packages: boards (`board-*`), their screen geometry (`layout-*`), screen, API client |
+| `firmware/packages/` | ESPHome packages: boards (`board-*`), their screen geometry (`layout-*`), screen, repaint, API client |
 | `firmware/fonts/`, `firmware/images/` | Fonts (licences in `LICENSES.md`) and the world maps, one per map size |
 | `tools/` | C++ tests, world map generator and its data, render converter |
 | `tests/` | pytest guards and the API frame fixture |
