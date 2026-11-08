@@ -7,6 +7,9 @@ All notable changes to this project are documented here. Format:
 
 ### Added
 
+- A second API frame fixture, with the `SEA`, `ACT` and `CRIT` lines vigie-api now adds for a surf
+  spot, and tests that the display accepts such a frame, skips those lines and decodes the rest
+  exactly as before. The firmware does not ask for a spot and does not read them yet.
 - The Vigie logo, an eye with an orange iris, as the project page's icon (`site/favicon.svg`) and at the top
   of the README, the same as the website's.
 - M5Stack Tab5 (1280×720, `-s vigie_board tab5`): board package taken from the

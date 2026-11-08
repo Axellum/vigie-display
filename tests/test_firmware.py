@@ -8,6 +8,8 @@
 - Every board package gives the layout sizes; each world map image matches its generator,
   the projection constants and a board's map size.
 - The C++ tests of tools/ compile and pass (g++, clang++, or zig through `python -m ziglang`).
+- The two API frame fixtures are signed frames; the second carries the activities block (SEA,
+  ACT, CRIT) that this firmware skips.
 """
 
 from __future__ import annotations
@@ -27,6 +29,7 @@ REPO = Path(__file__).resolve().parent.parent
 FIRMWARE = REPO / "firmware"
 CORE = FIRMWARE / "core"
 FIXTURE = REPO / "tests" / "fixtures" / "api_frame.txt"
+FIXTURE_ACTIVITIES = REPO / "tests" / "fixtures" / "api_frame_activities.txt"
 YAML_FILES = [REPO / "vigie.yaml", REPO / "vigie-render.yaml", *sorted((FIRMWARE / "packages").glob("*.yaml"))]
 CPP_FILES = sorted(FIRMWARE.rglob("*.cpp")) + sorted(FIRMWARE.rglob("*.h"))
 
@@ -162,12 +165,24 @@ def test_world_map_up_to_date():
     assert result.returncode == 0, result.stdout + result.stderr
 
 
-def test_fixture_is_a_signed_frame():
-    data = FIXTURE.read_bytes()
+@pytest.mark.parametrize("fixture", [FIXTURE, FIXTURE_ACTIVITIES], ids=lambda path: path.name)
+def test_fixture_is_a_signed_frame(fixture):
+    data = fixture.read_bytes()
     body, _, trailer = data.rpartition(b"END|")
     assert body.endswith(b"\n") and len(trailer.strip()) == 8
     assert f"{zlib.crc32(body) & 0xFFFFFFFF:08X}" == trailer.strip().decode().upper()
     assert b"\r" not in data, "the fixture must keep LF line endings (.gitattributes)"
+    assert max(len(line) for line in data.split(b"\n")) <= 512, "a frame line must fit the 512 bytes of the contract"
+
+
+def test_activities_fixture_has_the_activities_block():
+    """The second fixture is a frame with a surf spot: one SEA line, ACT lines and their CRIT lines."""
+    tags = [line.split("|", 1)[0] for line in FIXTURE_ACTIVITIES.read_text(encoding="utf-8").splitlines()]
+    assert tags.count("SEA") == 1 and tags.count("ACT") >= 1 and tags.count("CRIT") >= 1
+    assert tags.index("SEA") > max(i for i, tag in enumerate(tags) if tag in ("DAY", "HAZ")), "the block comes after the world"
+    assert tags[-1] == "END"
+    plain = [line.split("|", 1)[0] for line in FIXTURE.read_text(encoding="utf-8").splitlines()]
+    assert not {"SEA", "ACT", "CRIT"} & set(plain), "api_frame.txt stays a frame without the block: both must decode"
 
 
 def cxx_command() -> list[str] | None:
@@ -204,6 +219,6 @@ def test_cpp(name, tmp_path):
            f"tools/{name}.cpp", *CPP_TESTS[name], "-o", str(exe)]
     build = subprocess.run(cmd, cwd=REPO, capture_output=True, text=True)
     assert build.returncode == 0, build.stderr[-4000:]
-    run = subprocess.run([str(exe), str(FIXTURE)], cwd=REPO, capture_output=True, text=True, encoding="utf-8", errors="replace")
+    run = subprocess.run([str(exe), str(FIXTURE), str(FIXTURE_ACTIVITIES)], cwd=REPO, capture_output=True, text=True, encoding="utf-8", errors="replace")
     assert run.returncode == 0, run.stdout[-4000:]
     assert run.stdout.strip().startswith("OK:"), run.stdout
